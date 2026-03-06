@@ -1,0 +1,687 @@
+
+=== RUNNING SYMBOLIC ENGINE TEST SUITE ===
+
+
+--- Test 1: x^3 - x ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: x^3 - x
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: x^3 - x
+Step 2: Validation passed
+Step 3: Parsed expression: x^3 - x
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Factored form: x(x - 1)(x + 1)
+Step 7: Canonical simplified form: x^3 - x
+Step 8: Verification Passed
+
+FINAL
+Factored Form: x(x - 1)(x + 1)
+Canonical Simplified Form: x^3 - x
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 8
+Execution time: 0.4826 sec
+Timestamp: 2026-03-06 13:56:32
+SymPy version: 1.14.0
+
+--- Test 2: x^2 + 2*x + 1 ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: x^2 + 2*x + 1
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: x^2 + 2*x + 1
+Step 2: Validation passed
+Step 3: Parsed expression: x^2 + 2*x + 1
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Combine Like Terms -> x^2 + 2*x + 1
+Step 7: Factored form: (x + 1)^2
+Step 8: Canonical simplified form: x^2 + 2*x + 1
+Step 9: Verification Passed
+
+FINAL
+Factored Form: (x + 1)^2
+Canonical Simplified Form: x^2 + 2*x + 1
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 9
+Execution time: 0.0445 sec
+Timestamp: 2026-03-06 13:56:32
+SymPy version: 1.14.0
+
+--- Test 3: (x^2 - 4)/(x - 2) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: (x^2 - 4)/(x - 2)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: (x^2 - 4)/(x - 2)
+Step 2: Validation passed
+Step 3: Parsed expression: (x^2 - 4)/(x - 2)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Rational
+Step 6: Factor Numerator -> (x - 2)(x + 2)/(x - 2)
+Step 7: Factor Denominator -> x - 2
+Step 8: Cancel Common Factors -> x + 2
+Step 9: Rational Expression Simplification -> x + 2
+Step 10: Factored form: x + 2
+Step 11: Canonical simplified form: x + 2
+Step 12: Verification Passed
+
+FINAL
+Factored Form: x + 2
+Canonical Simplified Form: x + 2
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Rational
+Operations detected: Rational
+Steps performed: 12
+Execution time: 0.0223 sec
+Timestamp: 2026-03-06 13:56:32
+SymPy version: 1.14.0
+
+--- Test 4: sin(x)^2 + cos(x)^2 ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: sin(x)^2 + cos(x)^2
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: sin(x)^2 + cos(x)^2
+Step 2: Validation passed
+Step 3: Parsed expression: sin(x)^2 + cos(x)^2
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Trigonometric
+Step 6: Combine Like Terms -> 1
+Step 7: Factored form: 1
+Step 8: Canonical simplified form: 1
+Step 9: Verification Passed
+
+FINAL
+Factored Form: 1
+Canonical Simplified Form: 1
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Trigonometric
+Operations detected: Trigonometric
+Steps performed: 9
+Execution time: 0.0504 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 5: log(x*y) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: log(x*y)
+Detected Variables: x, y
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: log(x*y)
+Step 2: Validation passed
+Step 3: Parsed expression: log(xy)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Logarithmic
+Step 6: Factored form: log(xy)
+Step 7: Canonical simplified form: log(xy)
+Step 8: Verification Passed
+
+FINAL
+Factored Form: log(xy)
+Canonical Simplified Form: log(xy)
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Logarithmic
+Operations detected: Logarithmic
+Steps performed: 8
+Execution time: 0.0144 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 6: exp(x)*exp(x) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: exp(x)*exp(x)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: exp(x)*exp(x)
+Step 2: Validation passed
+Step 3: Parsed expression: exp(x)exp(x)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Exponential
+Step 6: Distributive Property -> exp(2*x)
+Step 7: Factored form: exp(2*x)
+Step 8: Canonical simplified form: exp(2*x)
+Step 9: Verification Passed
+
+FINAL
+Factored Form: exp(2*x)
+Canonical Simplified Form: exp(2*x)
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Exponential
+Operations detected: Exponential
+Steps performed: 9
+Execution time: 0.0392 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 7: sin(x) + x^2 ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: sin(x) + x^2
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: sin(x) + x^2
+Step 2: Validation passed
+Step 3: Parsed expression: x^2 + sin(x)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Trigonometric
+Step 6: Combine Like Terms -> x^2 + sin(x)
+Step 7: Factored form: x^2 + sin(x)
+Step 8: Canonical simplified form: x^2 + sin(x)
+Step 9: Verification Passed
+
+FINAL
+Factored Form: x^2 + sin(x)
+Canonical Simplified Form: x^2 + sin(x)
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Trigonometric
+Operations detected: Trigonometric
+Steps performed: 9
+Execution time: 0.0589 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 8: 3x+5x-2x ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 3x+5x-2x
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 3x+5x-2x
+Step 2: Validation passed
+Step 3: Parsed expression: -2*x + 3*x + 5*x
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Combine Like Terms -> 6*x
+Step 7: Factored form: 6*x
+Step 8: Canonical simplified form: 6*x
+Step 9: Verification Passed
+
+FINAL
+Factored Form: 6*x
+Canonical Simplified Form: 6*x
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 9
+Execution time: 0.0227 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 9: (2x+4)/2 ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: (2x+4)/2
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: (2x+4)/2
+Step 2: Validation passed
+Step 3: Parsed expression: (2*x + 4)/2
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Factor Numerator -> x + 2
+Step 7: Rational Expression Simplification -> x + 2
+Step 8: Factored form: x + 2
+Step 9: Canonical simplified form: x + 2
+Step 10: Verification Passed
+
+FINAL
+Factored Form: x + 2
+Canonical Simplified Form: x + 2
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 10
+Execution time: 0.0252 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 10: 2*(x+3) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 2*(x+3)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 2*(x+3)
+Step 2: Validation passed
+Step 3: Parsed expression: 2*(x + 3)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Distributive Property -> 2*x + 6
+Step 7: Factored form: 2*(x + 3)
+Step 8: Canonical simplified form: 2*x + 6
+Step 9: Verification Passed
+
+FINAL
+Factored Form: 2*(x + 3)
+Canonical Simplified Form: 2*x + 6
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 9
+Execution time: 0.0470 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 11: 2 * (x+3) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 2 * (x+3)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 2 * (x+3)
+Step 2: Validation passed
+Step 3: Parsed expression: 2*(x + 3)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Distributive Property -> 2*x + 6
+Step 7: Factored form: 2*(x + 3)
+Step 8: Canonical simplified form: 2*x + 6
+Step 9: Verification Passed
+
+FINAL
+Factored Form: 2*(x + 3)
+Canonical Simplified Form: 2*x + 6
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 9
+Execution time: 0.0261 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 12: 2*( x+3) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 2*( x+3)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 2*( x+3)
+Step 2: Validation passed
+Step 3: Parsed expression: 2*(x + 3)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Distributive Property -> 2*x + 6
+Step 7: Factored form: 2*(x + 3)
+Step 8: Canonical simplified form: 2*x + 6
+Step 9: Verification Passed
+
+FINAL
+Factored Form: 2*(x + 3)
+Canonical Simplified Form: 2*x + 6
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 9
+Execution time: 0.0274 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 13: ((x+2)^2 - 4)/(x+2 - 2) ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: ((x+2)^2 - 4)/(x+2 - 2)
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: ((x+2)^2 - 4)/(x+2 - 2)
+Step 2: Validation passed
+Step 3: Parsed expression: ((x + 2)^2 - 4)/(x - 2 + 2)
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Rational
+Step 6: Factor Numerator -> x(x + 4)/(x - 2 + 2)
+Step 7: Factor Denominator -> x
+Step 8: Cancel Common Factors -> x + 4
+Step 9: Rational Expression Simplification -> x + 4
+Step 10: Factored form: x + 4
+Step 11: Canonical simplified form: x + 4
+Step 12: Verification Passed
+
+FINAL
+Factored Form: x + 4
+Canonical Simplified Form: x + 4
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Rational
+Operations detected: Rational
+Steps performed: 12
+Execution time: 0.0320 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+--- Test 14: (x+1)^2 ---
+
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: (x+1)^2
+Detected Variables: x
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: (x+1)^2
+Step 2: Validation passed
+Step 3: Parsed expression: (x + 1)^2
+Step 4: Applying simplification methods...
+Step 5: Recognized expression type: Polynomial
+Step 6: Combine Like Terms -> (x + 1)^2
+Step 7: Binomial Expansion -> x^2 + 2*x + 1
+Step 8: Factored form: (x + 1)^2
+Step 9: Canonical simplified form: x^2 + 2*x + 1
+Step 10: Verification Passed
+
+FINAL
+Factored Form: (x + 1)^2
+Canonical Simplified Form: x^2 + 2*x + 1
+
+VERIFICATION
+Residual (Factored - Original): 0
+Residual (Canonical - Original): 0
+Status: Passed
+
+SUMMARY
+Expression type: Polynomial
+Operations detected: Polynomial
+Steps performed: 10
+Execution time: 0.0491 sec
+Timestamp: 2026-03-06 13:56:33
+SymPy version: 1.14.0
+
+=== RUNNING INVALID INPUT TESTS ===
+
+
+--- Invalid Test 1: '' ---
+
+Validation output:
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 
+Detected Variables: N/A
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 
+Step 2: Validation failed: Expression is empty. Please provide a valid symbolic expression.
+
+FINAL
+Factored Form: 
+Canonical Simplified Form: 
+
+VERIFICATION
+
+
+SUMMARY
+Computation terminated due to validation error.
+Error message: Expression is empty. Please provide a valid symbolic expression.
+
+--- Invalid Test 2: '2**' ---
+
+Validation output:
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: 2**
+Detected Variables: N/A
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: 2**
+Step 2: Validation passed
+ERROR: Could not parse expression. invalid syntax (<unknown>, line 1)
+
+FINAL
+Factored Form: 
+Canonical Simplified Form: 
+
+VERIFICATION
+
+
+SUMMARY
+Computation terminated due to parsing error.
+Error message: Parsing error: invalid syntax (<unknown>, line 1)
+
+--- Invalid Test 3: 'x + @' ---
+
+Validation output:
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: x + @
+Detected Variables: N/A
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: x + @
+Step 2: Validation failed: Expression contains invalid characters. Only letters, digits and +-*/^(),. are allowed.
+
+FINAL
+Factored Form: 
+Canonical Simplified Form: 
+
+VERIFICATION
+
+
+SUMMARY
+Computation terminated due to validation error.
+Error message: Expression contains invalid characters. Only letters, digits and +-*/^(),. are allowed.
+
+--- Invalid Test 4: '(x+1' ---
+
+Validation output:
+GIVEN
+Problem: Simplify the symbolic expression
+Input Expression: (x+1
+Detected Variables: N/A
+
+METHOD
+Rule-based simplification engine applying algebraic properties via SymPy
+Rules attempted: distributive, multi-term distribution, combine-like-terms, exponent rules, binomial expansion, rational simplification
+Parameters: Default symbolic evaluation
+
+STEPS
+Step 1: Original expression: (x+1
+Step 2: Validation failed: Parentheses are not balanced.
+
+FINAL
+Factored Form: 
+Canonical Simplified Form: 
+
+VERIFICATION
+
+
+SUMMARY
+Computation terminated due to validation error.
+Error message: Parentheses are not balanced.
+
+=== TESTING COMPLETE ===

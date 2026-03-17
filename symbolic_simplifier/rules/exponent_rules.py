@@ -28,15 +28,23 @@ def apply_rule(expr):
         Expression with exponent rules applied
     """
     try:
+        # Only apply exponent rules when explicit exponent structure is present
+        # and at least two exponent expressions are available to combine.
+        if not expr.has(sympy.Pow):
+            return expr
+
+        pow_atoms = list(expr.atoms(sympy.Pow))
+        has_power_of_power = isinstance(expr, sympy.Pow) and isinstance(expr.base, sympy.Pow)
+        if not (len(pow_atoms) >= 2 or has_power_of_power):
+            return expr
+
         # Use SymPy's powsimp to simplify expressions with powers
-        # This combines and simplifies exponents according to the rules
         simplified = sympy.powsimp(expr)
 
         # Also try expand_power_exp and expand_power_base for additional simplification
         expanded_exp = sympy.expand_power_exp(simplified)
         expanded_base = sympy.expand_power_base(expanded_exp)
 
-        # Return the most simplified form
         if expanded_base != expr:
             return expanded_base
         elif expanded_exp != expr:

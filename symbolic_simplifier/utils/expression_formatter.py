@@ -69,7 +69,10 @@ def format_trail(trail: dict) -> str:
 
     # METHOD
     lines.append("METHOD")
-    lines.append(trail["method"])
+    # Show the new detailed method section, which lists applied rules
+    method_lines = trail["method"].split("\n")
+    for mline in method_lines:
+        lines.append(mline)
     lines.append("")
 
 

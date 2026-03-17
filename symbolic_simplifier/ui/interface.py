@@ -29,11 +29,11 @@ class RetroButton(tk.Button):
             parent,
             text=text,
             command=command,
-            font=("Courier", 10, "bold"),
-            bg="#C0C080",
-            fg="#000000",
-            activebackground="#B8B860",
-            activeforeground="#000000",
+            font=("Consolas", 10, "bold"),
+            bg="#332391",
+            fg="#FFFFFF",
+            activebackground="#1F1655",
+            activeforeground="#FFFFFF",
             relief=tk.RAISED,
             bd=2,
             padx=12,
@@ -61,9 +61,9 @@ class SymbolicMathApp:
         self.root = root
         self.root.title("OPM - SYMBOLIC MATH GENERATOR v1.0")
         self.root.geometry("1000x750")
-        self.root.configure(bg="#C0C080")
-        self.monospace_font = ("Courier", 10)
-        self.monospace_bold = ("Courier", 11, "bold")
+        self.root.configure(bg="#d1d1d1")
+        self.base_font = ("Segoe UI", 10)
+        self.base_bold = ("Segoe UI", 11, "bold")
         self.build_ui()
 
     def build_ui(self):
@@ -101,3 +101,5 @@ class SymbolicMathApp:
         """Show file export dialog for the trail."""
         # Implementation will handle file export
         pass
+
+    

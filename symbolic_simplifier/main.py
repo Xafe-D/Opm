@@ -5,12 +5,17 @@ Launches the GUI application for symbolic expression simplification.
 Integrates the modular engine with the retro-styled user interface.
 """
 
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinter import font as tkfont
+import json
+import os
+from datetime import datetime
 
 # Import the core engine and utilities
 from . import process
-from .ui.interface import RetroButton, SymbolicMathApp
+from .ui.interface import RetroButton
 
 # For PDF export (requires reportlab package)
 try:
@@ -34,36 +39,115 @@ class SymbolicMathApp(tk.Widget):
         self.root = root
         self.root.title("OPM - SYMBOLIC MATH GENERATOR v1.0")
         self.root.geometry("1000x750")
-        self.root.configure(bg="#C0C080")
-        self.monospace_font = ("Courier", 10)
-        self.monospace_bold = ("Courier", 11, "bold")
+        self.root.configure(bg="#d1d1d1")
+        self.base_font = ("Consolas", 10)
+        self.base_bold = ("Consolas", 11, "bold")
+        self.code_font = ("Courier New", 10)
+
+        # history storage
+        self.history = []  # list of dicts: {'expression','final','trail','timestamp'}
+        self.history_path = os.path.join(os.getcwd(), "history.json")
+        self.is_processing = False
+        self.compute_button = None
+        # compute typical entry width based on placeholder text
+        sample_text = "x+99 (2000-01-01 00:00:00)"
+        try:
+            char_width = tkfont.Font(font=self.code_font).measure('0')
+            sample_px = tkfont.Font(font=self.code_font).measure(sample_text)
+        except Exception:
+            sample_px = 120
+        # minimum width for sidebar when empty; use sample width plus padding
+        self.min_sidebar_px = sample_px + char_width * 2
+        # remember last-used calculated width (never shrink below this)
+        self.sidebar_width_px = None
+        self.load_history()
+
         self.build_ui()
 
     def build_ui(self):
+        # create horizontal paned window containing sidebar and main content
+        main_container = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        main_container.pack(fill="both", expand=True)
+        self.main_container = main_container  # keep reference for toggle
+
+        # content area holds the existing UI elements (add first so sidebar ends up on right)
+        self.content_frame = tk.Frame(main_container, bg="#d1d1d1")
+        main_container.add(self.content_frame)
+        # let the content pane expand to fill available space
+        try:
+            main_container.paneconfigure(self.content_frame, stretch='always')
+        except Exception:
+            pass
+
+        # sidebar for history/chat list placed on the right
+        self.sidebar_frame = tk.Frame(main_container, bg="#e0e0e0", width=60)
+        main_container.add(self.sidebar_frame, minsize=100)
+        # keep sidebar from stretching when window is resized
+        try:
+            main_container.paneconfigure(self.sidebar_frame, stretch='never')
+        except Exception:
+            pass
+        self.history_visible = True
+
+        # HISTORY SIDEBAR
+        tk.Label(self.sidebar_frame, text="HISTORY", font=self.base_bold, bg="#e0e0e0").pack(pady=(10,0))
+        # container for listbox + scrollbar to keep scrollbar adjacent
+        list_container = tk.Frame(self.sidebar_frame, bg="#e0e0e0")
+        list_container.pack(fill="both", expand=True, padx=5, pady=5)
+        self.history_listbox = tk.Listbox(list_container, font=self.base_font)
+        self.history_listbox.pack(side="left", fill="both", expand=True)
+        self.history_listbox.bind("<<ListboxSelect>>", self.on_history_select)
+        hist_scroll = ttk.Scrollbar(list_container, command=self.history_listbox.yview)
+        hist_scroll.pack(side="right", fill="y")
+        self.history_listbox.config(yscrollcommand=hist_scroll.set)
+
+        RetroButton(self.sidebar_frame, "NEW", command=self.new_session, width=10).pack(pady=3)
+        RetroButton(self.sidebar_frame, "CLEAR", command=self.clear_history, width=10).pack(pady=3)
+
         # TITLE BANNER
-        title_frame = tk.Frame(self.root, bg="#C0C080")
+        title_frame = tk.Frame(self.content_frame, bg="#d1d1d1")
         title_frame.pack(fill="x", padx=5, pady=10)
-        
-        banner = tk.Label(
+
+        # draw a compact rounded badge with black background
+        badge_bg = "#000000"
+        badge_fg = "#FFFFFF"
+        badge_canvas = tk.Canvas(title_frame, width=80, height=34, bg="#d1d1d1", highlightthickness=0)
+        radius = 8
+        x0, y0, x1, y1 = 2, 2, 78, 32
+        badge_canvas.create_arc(x0, y0, x0+radius*2, y0+radius*2, start=90, extent=90, fill=badge_bg, outline=badge_bg)
+        badge_canvas.create_arc(x1-radius*2, y0, x1, y0+radius*2, start=0, extent=90, fill=badge_bg, outline=badge_bg)
+        badge_canvas.create_arc(x0, y1-radius*2, x0+radius*2, y1, start=180, extent=90, fill=badge_bg, outline=badge_bg)
+        badge_canvas.create_arc(x1-radius*2, y1-radius*2, x1, y1, start=270, extent=90, fill=badge_bg, outline=badge_bg)
+        badge_canvas.create_rectangle(x0+radius, y0, x1-radius, y1, fill=badge_bg, outline=badge_bg)
+        badge_canvas.create_rectangle(x0, y0+radius, x1, y1-radius, fill=badge_bg, outline=badge_bg)
+        # center the text horizontally and vertically in the badge
+        badge_canvas.create_text((40, 17), text="OPM", font=("Courier", 13, "bold"), fill=badge_fg, anchor="center")
+        badge_canvas.pack(side="left", padx=(0, 8))
+
+        title_label = tk.Label(
             title_frame,
-            text="OPM - SYMBOLIC MATH CALCULATOR",
-            font=("Courier", 14, "bold"),
-            bg="#C0C080",
+            text="SYMBOLIC MATH CALCULATOR",
+            font=("Courier", 15, "bold"),
+            bg="#d1d1d1",
             fg="#000000",
-            justify="center"
+            justify="left"
         )
-        banner.pack()
+        title_label.pack(side="left")
+
+        # toggle button for history sidebar
+        self.toggle_btn = RetroButton(title_frame, "☰", command=self.toggle_history, width=3)
+        self.toggle_btn.pack(side="right", padx=5)
 
         # INPUT PANEL
-        input_frame = tk.Frame(self.root, bg="#C0C080", relief=tk.SUNKEN, bd=3)
+        input_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
         input_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(input_frame, text="Input Expression:", font=self.monospace_bold, bg="#C0C080", fg="#000000").pack(side="left", padx=8, pady=5)
+        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(side="left", padx=8, pady=5)
         
         self.expression_entry = tk.Entry(
             input_frame,
-            font=self.monospace_font,
-            bg="#E8E8D0",
+            font=self.base_font,
+            bg="#E9E9DF",
             fg="#000000",
             insertbackground="#000000",
             relief=tk.SUNKEN,
@@ -72,25 +156,26 @@ class SymbolicMathApp(tk.Widget):
         self.expression_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5, ipady=4)
 
         # BUTTON PANEL
-        buttons_inner = tk.Frame(self.root, bg="#C0C080")
+        buttons_inner = tk.Frame(self.content_frame, bg="#d1d1d1")
         buttons_inner.pack(pady=10)
         
-        RetroButton(buttons_inner, "COMPUTE", command=self.compute_expression).pack(side="left", padx=5)
-        RetroButton(buttons_inner, "CLEAR", command=self.clear_fields).pack(side="left", padx=5)
-        RetroButton(buttons_inner, "COPY TRAIL", command=self.copy_trail).pack(side="left", padx=5)
-        RetroButton(buttons_inner, "EXPORT", command=self.export_trail_prompt).pack(side="left", padx=5)
+        self.compute_button = RetroButton(buttons_inner, "▶ COMPUTE", command=self.compute_expression)
+        self.compute_button.pack(side="left", padx=5)
+        RetroButton(buttons_inner, "🧹 CLEAR", command=self.clear_fields).pack(side="left", padx=5)
+        RetroButton(buttons_inner, "📋 COPY", command=self.copy_trail).pack(side="left", padx=5)
+        RetroButton(buttons_inner, "💾 EXPORT", command=self.export_trail_prompt).pack(side="left", padx=5)
 
         # FINAL ANSWER PANEL
-        final_frame = tk.Frame(self.root, bg="#C0C080", relief=tk.SUNKEN, bd=3)
+        final_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
         final_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(final_frame, text="Final Answer:", font=self.monospace_bold, bg="#C0C080", fg="#000000").pack(anchor="w", padx=8, pady=5)
+        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg="#d1d1d1", fg="#0f5f0f").pack(anchor="w", padx=8, pady=5)
 
         self.final_answer_label = tk.Label(
             final_frame,
             text="[Awaiting Input]",
-            font=self.monospace_font,
-            bg="#E8E8D0",
+            font=self.base_bold,
+            bg="#E9E9DF",
             fg="#000000",
             wraplength=900,
             justify="left",
@@ -100,20 +185,30 @@ class SymbolicMathApp(tk.Widget):
         )
         self.final_answer_label.pack(fill="x", padx=5, pady=(0, 5))
 
+        # PROCESSING STATUS PANEL (moved below Final Answer, above Solution Trail)
+        status_frame = tk.Frame(self.content_frame, bg="#d1d1d1")
+        status_frame.pack(fill="x", padx=10, pady=(0, 8))
+
+        self.status_label = tk.Label(status_frame, text="⏳ IDLE", font=self.base_font, bg="#d1d1d1", fg="#000000")
+        self.status_label.pack(side="left", padx=5)
+
+        self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
+        self.progress_bar.pack(side="left", fill="x", expand=True, padx=6)
+
         # SOLUTION TRAIL PANEL
-        trail_frame = tk.Frame(self.root, bg="#C0C080", relief=tk.SUNKEN, bd=3)
+        trail_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
         trail_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        tk.Label(trail_frame, text="Solution Trail:", font=self.monospace_bold, bg="#C0C080", fg="#000000").pack(anchor="w", padx=5, pady=3)
+        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(anchor="w", padx=5, pady=3)
 
-        trail_inner = tk.Frame(trail_frame, bg="#C0C080")
+        trail_inner = tk.Frame(trail_frame, bg="#d1d1d1")
         trail_inner.pack(fill="both", expand=True, padx=3, pady=3)
         
         self.trail_text = tk.Text(
             trail_inner,
             wrap="word",
-            font=self.monospace_font,
-            bg="#E8E8D0",
+            font=self.base_font,
+            bg="#E9E9DF",
             fg="#000000",
             insertbackground="#000000",
             relief=tk.SUNKEN,
@@ -124,34 +219,63 @@ class SymbolicMathApp(tk.Widget):
         scrollbar = ttk.Scrollbar(trail_inner, command=self.trail_text.yview)
         scrollbar.pack(side="right", fill="y")
         self.trail_text.config(yscrollcommand=scrollbar.set, state="disabled")
-        self.trail_text.tag_config("header", font=("Courier", 11, "bold"), foreground="#000000")
-        self.trail_text.tag_config("section", foreground="#000000")
+        self.trail_text.tag_config("header", font=self.base_bold, foreground="#2d2d8f")
+        self.trail_text.tag_config("section", foreground="#0f0f0f")
+
+        # populate history listbox (history loaded during init)
+        self.update_history_list()
+
+        # collapse history by default
+        self.toggle_history(initial=True)
 
     def compute_expression(self):
-        """Process the input expression and display results."""
-        expr = self.expression_entry.get().strip()
-        if not expr:
-            messagebox.showwarning("INPUT ERROR", "[!] Please enter an expression.")
+        """Entry point: start background processing and show progress."""
+        if self.is_processing:
             return
 
-        result = process(expr)
+        expr = self.expression_entry.get().strip()
+        if not expr:
+            messagebox.showwarning("INPUT ERROR", "[!] Please enter an expression.", parent=self.root)
+            return
+
+        self.is_processing = True
+        self.status_label.config(text="⏳ PROCESSING...", fg="#3b5998")
+        self.progress_bar.start(10)
+        self.compute_button.config(state="disabled")
+
+        thread = threading.Thread(target=self._compute_expression_thread, args=(expr,), daemon=True)
+        thread.start()
+
+    def _compute_expression_thread(self, expr):
+        try:
+            result = process(expr)
+        except Exception as e:
+            result = {
+                "status": "error",
+                "error_message": str(e),
+                "final_answers": {},
+                "formatted_trail": "",
+            }
+
+        self.root.after(0, lambda: self._on_compute_complete(expr, result))
+
+    def _on_compute_complete(self, expr, result):
         self.trail_text.config(state="normal")
         self.trail_text.delete("1.0", tk.END)
 
         if result["status"] == "success":
             factored = result["final_answers"]["factored_form"]
             canonical = result["final_answers"]["canonical_form"]
-            self.final_answer_label.config(
-                text=f"✓ FACTORED: {factored}\n✓ CANONICAL: {canonical}"
-            )
+            final_text = f"✓ FACTORED: {factored}\n✓ CANONICAL: {canonical}"
+            self.final_answer_label.config(text=final_text)
 
             badge_map = {
-                "GIVEN": "[IN]",
-                "METHOD": "[*]",
-                "STEPS": "[->]",
-                "FINAL ANSWER": "[!]",
-                "VERIFICATION": "[OK]",
-                "SUMMARY": "[#]"
+                "GIVEN": "🟢 GIVEN",
+                "METHOD": "🟡 METHOD",
+                "STEPS": "🔵 STEPS",
+                "FINAL ANSWER": "✅ FINAL ANSWER",
+                "VERIFICATION": "✅ VERIFICATION",
+                "SUMMARY": "✳️ SUMMARY"
             }
 
             sections = result["formatted_trail"].split("\n\n")
@@ -159,8 +283,8 @@ class SymbolicMathApp(tk.Widget):
                 if section.strip():
                     lines = section.strip().split("\n")
                     header_name = lines[0].upper()
-                    badge = badge_map.get(header_name, "[?]")
-                    header_text = f"{badge} {lines[0]}\n"
+                    badge = badge_map.get(header_name, "❓ " + lines[0].upper())
+                    header_text = f"{badge}\n"
                     content_lines = lines[1:]
 
                     if header_name == "VERIFICATION":
@@ -175,12 +299,23 @@ class SymbolicMathApp(tk.Widget):
                     self.trail_text.insert(tk.END, content_text, "section")
         else:
             self.final_answer_label.config(text="[ERROR] Failed to compute")
-            # show specific message if available
             err_msg = result.get("error_message") or "Failed to compute expression. Check syntax."
-            messagebox.showerror("COMPUTATION ERROR", err_msg)
+            messagebox.showerror("COMPUTATION ERROR", err_msg, parent=self.root)
+
+        trail_content = self.trail_text.get("1.0", tk.END).strip()
+        try:
+            hist_final = self.final_answer_label.cget("text")
+            self.add_history_entry(expr, hist_final, trail_content)
+        except Exception:
+            pass
 
         self.trail_text.see("1.0")
         self.trail_text.config(state="disabled")
+
+        self.is_processing = False
+        self.status_label.config(text="✅ Idle", fg="#0f5f0f")
+        self.progress_bar.stop()
+        self.compute_button.config(state="normal")
 
     def clear_fields(self):
         """Clear all input and output fields."""
@@ -192,72 +327,484 @@ class SymbolicMathApp(tk.Widget):
 
     def copy_trail(self):
         """Copy the simplification trail to clipboard."""
+        trail_content = self.trail_text.get("1.0", tk.END).strip()
+
+        if not trail_content:
+            self.show_info_dialog(
+                "[!] Solution trail is empty.\nCompute an expression first.",
+                "Copy Error"
+            )
+            return
+
         self.root.clipboard_clear()
-        self.root.clipboard_append(self.trail_text.get("1.0", tk.END))
-        messagebox.showinfo("COPY STATUS", "[✓] Solution trail copied to clipboard!")
+        self.root.clipboard_append(trail_content)
+        self.show_info_dialog("[✓] Solution trail copied to clipboard!", "Copy Status")
 
     def export_trail_prompt(self):
         """Ask user whether to export TXT or PDF"""
         trail_content = self.trail_text.get("1.0", tk.END).strip()
+
         if not trail_content:
-            messagebox.showwarning("EXPORT ERROR", "[!] Nothing to export. Compute an expression first.")
+            self.show_info_dialog(
+                "[!] Nothing to export.\nCompute an expression first.",
+                "Export Error"
+            )
             return
 
         if _HAS_REPORTLAB:
-            choice = messagebox.askquestion("EXPORT FORMAT", "[?] Export as PDF?\n[YES] PDF  |  [NO] TXT")
-            if choice == "yes":
+            fmt = self.choose_export_format()
+
+            if fmt == 'pdf':
                 self.export_pdf(trail_content)
-            else:
+
+            elif fmt == 'txt':
                 self.export_txt(trail_content)
+
         else:
-            messagebox.showwarning("MISSING DEPENDENCY", 
-                                   "[!] PDF export requires the 'reportlab' package.\n"
-                                   "Install it via pip and restart the application.")
+            self.show_info_dialog(
+                "[!] PDF export requires the 'reportlab' package.\n"
+                "Install it via pip and restart the application.",
+                "Missing Dependency"
+            )
             self.export_txt(trail_content)
+
+    def choose_export_format(self):
+        """Display a retro dialog that returns 'pdf', 'txt', or None."""
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Export Format")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.configure(bg="#d1d1d1")
+
+        result = {"format": None}
+
+        def set_fmt(fmt):
+            result["format"] = fmt
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        frame = tk.Frame(dlg, bg="#d1d1d1", padx=20, pady=15)
+        frame.pack()
+
+        tk.Label(
+            frame,
+            text="[i] Choose export format:",
+            font=self.base_font,
+            bg="#d1d1d1"
+        ).pack(pady=(0, 10))
+
+        btn_frame = tk.Frame(frame, bg="#d1d1d1")
+        btn_frame.pack()
+
+        RetroButton(btn_frame, "PDF", command=lambda: set_fmt("pdf")).pack(side="left", padx=6)
+        RetroButton(btn_frame, "TXT", command=lambda: set_fmt("txt")).pack(side="left", padx=6)
+        RetroButton(btn_frame, "CANCEL", command=dlg.destroy).pack(side="left", padx=6)
+
+        dlg.update_idletasks()
+
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+
+        dlg.geometry(f"+{x}+{y}")
+
+        self.root.wait_window(dlg)
+
+        return result["format"]
 
     def export_txt(self, content):
         """Export simplification trail as text file."""
-        file_path = filedialog.asksaveasfilename(defaultextension=".txt",
-                                                 filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
-                                                 title="[SAVE] Solution Trail As")
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+            title="[SAVE] Solution Trail As"
+        )
+
         if file_path:
             try:
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                messagebox.showinfo("EXPORT SUCCESSFUL", f"[✓] Solution trail saved to:\n{file_path}")
+
+                self.show_info_dialog(
+                    f"[✓] Solution trail saved to:\n{file_path}",
+                    "Export Successful"
+                )
+
             except Exception as e:
-                messagebox.showerror("EXPORT FAILED", f"[!] Could not save file:\n{str(e)}")
+                self.show_info_dialog(
+                    f"[!] Could not save file:\n{str(e)}",
+                    "Export Failed"
+                )
 
     def export_pdf(self, content):
         """Export simplification trail as PDF file."""
+
         if not _HAS_REPORTLAB:
-            messagebox.showerror("EXPORT FAILED", "[!] ReportLab is not available; cannot create PDF.")
+            self.show_info_dialog(
+                "[!] ReportLab is not available; cannot create PDF.",
+                "Export Failed"
+            )
             return
 
-        file_path = filedialog.asksaveasfilename(defaultextension=".pdf",
-                                                 filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")],
-                                                 title="[SAVE] Solution Trail As PDF")
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")],
+            title="[SAVE] Solution Trail As PDF"
+        )
+
         if file_path:
             try:
                 c = canvas.Canvas(file_path, pagesize=letter)
+
                 width, height = letter
                 y = height - 40
+
                 for line in content.split("\n"):
+
                     if any(line.startswith(badge) for badge in ["[IN]", "[*]", "[→]", "[!]", "[✓]", "[#]"]):
                         c.setFont("Courier-Bold", 12)
-                        c.setFillColorRGB(0, 0.5, 0)  # green
+                        c.setFillColorRGB(0, 0.5, 0)
+
                     else:
                         c.setFont("Courier", 10)
                         c.setFillColorRGB(0, 0, 0)
+
                     c.drawString(40, y, line)
                     y -= 14
+
                     if y < 40:
                         c.showPage()
                         y = height - 40
+
                 c.save()
-                messagebox.showinfo("EXPORT SUCCESSFUL", f"[✓] Solution trail saved as PDF:\n{file_path}")
+
+                self.show_info_dialog(
+                    f"[✓] Solution trail saved as PDF:\n{file_path}",
+                    "Export Successful"
+                )
+
             except Exception as e:
-                messagebox.showerror("EXPORT FAILED", f"[!] Could not save PDF:\n{str(e)}")
+                self.show_info_dialog(
+                    f"[!] Could not save PDF:\n{str(e)}",
+                    "Export Failed"
+                )
+
+    def show_info_dialog(self, message, title="Information"):
+        """Reusable retro info dialog."""
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title(title)
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.configure(bg="#d1d1d1")
+
+        def close():
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", close)
+
+        frame = tk.Frame(dlg, bg="#d1d1d1", padx=20, pady=15)
+        frame.pack()
+
+        tk.Label(
+            frame,
+            text=message,
+            font=self.base_font,
+            bg="#d1d1d1",
+            justify="center"
+        ).pack(pady=(0, 10))
+
+        RetroButton(frame, "OK", command=close).pack()
+
+        dlg.update_idletasks()
+
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+
+        dlg.geometry(f"+{x}+{y}")
+
+        dlg.bind("<Return>", lambda e: close())
+        dlg.bind("<Escape>", lambda e: close())
+
+        self.root.wait_window(dlg)
+
+    # ---- history management -------------------------------------------------
+    def load_history(self):
+        """Load history from disk (history.json)."""
+        try:
+            if os.path.exists(self.history_path):
+                with open(self.history_path, "r", encoding="utf-8") as f:
+                    self.history = json.load(f)
+            else:
+                self.history = []
+        except Exception:
+            # in case of corrupt file just start fresh
+            self.history = []
+        self.update_history_list()
+
+    def save_history(self):
+        """Persist current history list to disk."""
+        try:
+            with open(self.history_path, "w", encoding="utf-8") as f:
+                json.dump(self.history, f, indent=2)
+        except Exception as e:
+            # if saving fails, we log to console but continue
+            print("Failed to save history:", e)
+
+    def add_history_entry(self, expr, final_text, trail_text):
+        """Add a new record to history and refresh sidebar."""
+        entry = {
+            "expression": expr,
+            "final": final_text,
+            "trail": trail_text,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        # insert at front so newest appear top
+        self.history.insert(0, entry)
+        self.update_history_list()
+        self.save_history()
+
+    def update_history_list(self):
+        """Redraw listbox contents from history array and adjust sizing."""
+        if not hasattr(self, "history_listbox"):
+            return
+        self.history_listbox.delete(0, tk.END)
+        # track maximum width in pixels
+        max_pixel = 0
+        char_width = tkfont.Font(font=self.code_font).measure('0')
+        for entry in self.history:
+            # avoid unnecessary padding after timestamp
+            label = f"{entry['expression']} ({entry['timestamp']})"
+            self.history_listbox.insert(tk.END, label)
+            try:
+                pw = tkfont.Font(font=self.code_font).measure(label)
+                if pw > max_pixel:
+                    max_pixel = pw
+            except Exception:
+                pass
+
+        # adjust sizes if we found something
+        if max_pixel > 0:
+            # the listbox will fill its parent; no need to set width here
+            pass
+
+            # compute exact desired pixel width including a bit of padding
+            desired_px = max_pixel + (2 * char_width)
+            # enforce minimum
+            if hasattr(self, 'min_sidebar_px'):
+                desired_px = max(desired_px, self.min_sidebar_px)
+            # also ensure we don't shrink below previously stored sidebar_width_px
+            if self.sidebar_width_px is not None:
+                desired_px = max(desired_px, self.sidebar_width_px)
+
+            self.sidebar_frame.config(width=desired_px)
+            self.current_sidebar_width_px = desired_px
+            self.sidebar_width_px = desired_px
+            try:
+                self.main_container.paneconfigure(self.sidebar_frame, minsize=desired_px, width=desired_px)
+            except Exception:
+                pass
+            if self.history_visible:
+                    # width has already been applied via paneconfigure; update and move sash
+                    self.main_container.update_idletasks()
+                    try:
+                        total = self.root.winfo_width()
+                        self.main_container.sash_place(0, total - desired_px, 0)
+                    except Exception:
+                        pass
+        else:
+            # no entries; preserve existing width if we have one
+            if self.sidebar_width_px is None:
+                # first time, give it the minimum
+                self.sidebar_width_px = self.min_sidebar_px
+            # also ensure current_sidebar reflects
+            self.current_sidebar_width_px = self.sidebar_width_px
+            try:
+                self.main_container.paneconfigure(self.sidebar_frame, minsize=self.sidebar_width_px, width=self.sidebar_width_px)
+            except Exception:
+                pass
+    def on_history_select(self, event):
+        """Load a selected history entry into the main view."""
+        sel = self.history_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        entry = self.history[idx]
+        # display data
+        self.expression_entry.delete(0, tk.END)
+        self.expression_entry.insert(0, entry["expression"])
+        self.final_answer_label.config(text=entry["final"])
+        self.trail_text.config(state="normal")
+        self.trail_text.delete("1.0", tk.END)
+        self.trail_text.insert(tk.END, entry["trail"])
+        self.trail_text.config(state="disabled")
+
+    def new_session(self):
+        """Prepare UI for a new computation (clear inputs but keep history)."""
+        self.clear_fields()
+        # clear any selection
+        self.history_listbox.selection_clear(0, tk.END)
+
+
+    def clear_history(self):
+        """Remove all saved history from memory and disk using a custom dialog."""
+
+        # If history is empty
+        if not self.history:
+            self.show_history_empty()
+            return
+
+        result = self.confirm_clear_history()
+
+        if result:
+            self.history = []
+            self.update_history_list()
+
+            try:
+                if os.path.exists(self.history_path):
+                    os.remove(self.history_path)
+            except Exception:
+                pass
+    
+    def confirm_clear_history(self):
+        """Custom retro confirmation dialog."""
+        
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Confirm")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.configure(bg="#d1d1d1")
+
+        result = {"value": False}
+
+        def confirm():
+            result["value"] = True
+            dlg.destroy()
+
+        def cancel():
+            dlg.destroy()
+
+        # X button acts like cancel
+        dlg.protocol("WM_DELETE_WINDOW", cancel)
+
+        frame = tk.Frame(dlg, bg="#d1d1d1", padx=20, pady=15)
+        frame.pack()
+
+        tk.Label(
+            frame,
+            text="[i] Clear all history?\nThis cannot be undone.",
+            font=self.base_font,
+            bg="#d1d1d1",
+            justify="center"
+        ).pack(pady=(0, 10))
+
+        btn_frame = tk.Frame(frame, bg="#d1d1d1")
+        btn_frame.pack()
+
+        RetroButton(btn_frame, "YES", command=confirm).pack(side="left", padx=6)
+        RetroButton(btn_frame, "NO", command=cancel).pack(side="left", padx=6)
+
+        # center dialog
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        dlg.geometry(f"+{x}+{y}")
+
+        self.root.wait_window(dlg)
+
+        return result["value"]
+    
+    def show_history_empty(self):
+        """Retro dialog informing the user history is empty."""
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("History")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.configure(bg="#d1d1d1")
+
+        def close():
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", close)
+
+        frame = tk.Frame(dlg, bg="#d1d1d1", padx=20, pady=15)
+        frame.pack()
+
+        tk.Label(
+            frame,
+            text="[i] There are no previous records to clear.",
+            font=self.base_font,
+            bg="#d1d1d1",
+            justify="center"
+        ).pack(pady=(0, 10))
+
+        btn_frame = tk.Frame(frame, bg="#d1d1d1")
+        btn_frame.pack()
+
+        RetroButton(btn_frame, "OK", command=close).pack(padx=6)
+
+        # center dialog
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        dlg.geometry(f"+{x}+{y}")
+
+        self.root.wait_window(dlg)
+
+    def toggle_history(self, initial=False):
+        """Show or hide the history sidebar. If 'initial' is True, only hide without toggling state label."""
+        if self.history_visible:
+            # remove from paned window
+            try:
+                self.main_container.forget(self.sidebar_frame)
+            except Exception:
+                pass
+            self.history_visible = False
+            if not initial:
+                self.toggle_btn.config(text="☰")
+        else:
+            # determine size to use when showing
+            desired_px = getattr(self, 'current_sidebar_width_px', self.min_sidebar_px)
+            if hasattr(self, 'min_sidebar_px'):
+                desired_px = max(desired_px, self.min_sidebar_px)
+            # re-add to paned window on right side with appropriate minsize/width
+            self.main_container.add(self.sidebar_frame, minsize=desired_px)
+            try:
+                self.main_container.paneconfigure(self.sidebar_frame, width=desired_px, stretch='never')
+            except Exception:
+                pass
+            # also reposition sash
+            try:
+                total = self.root.winfo_width()
+                self.main_container.sash_place(0, total - desired_px, 0)
+            except Exception:
+                pass
+
+            self.history_visible = True
+            if not initial:
+                self.toggle_btn.config(text="×")
+            # width already applied via paneconfigure
+            try:
+                self.main_container.update_idletasks()
+            except Exception:
+                pass
 
 
 def run_app():

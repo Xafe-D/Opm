@@ -11,6 +11,17 @@ Functions:
 import sympy
 
 
+def _contains_binomial_power(expr):
+    """Return True if expr contains a binomial power (a + b)^n with n>1."""
+
+    from sympy import Pow, Add
+
+    if isinstance(expr, Pow) and isinstance(expr.base, Add) and expr.exp.is_Integer and expr.exp > 1:
+        return True
+
+    return any(_contains_binomial_power(arg) for arg in getattr(expr, "args", []))
+
+
 def apply_rule(expr):
     """Apply binomial expansion rule to the expression.
 
@@ -25,9 +36,19 @@ def apply_rule(expr):
         Expression with binomial expansions applied
     """
     try:
-        # Use SymPy's expand to handle binomial expansion
-        # This automatically applies the binomial theorem
-        expanded = sympy.expand(expr)
+        # Only expand when we actually have a binomial power; avoid turning
+        # distributive/multi-term products into expanded form prematurely.
+        if not _contains_binomial_power(expr):
+            return expr
+
+        # Expand only the binomial power parts (e.g., (x+1)^2) and keep
+        # surrounding multiplication/distribution intact.
+        from sympy import Pow, Add
+
+        expanded = expr.replace(
+            lambda e: isinstance(e, Pow) and isinstance(e.base, Add) and e.exp.is_Integer and e.exp > 1,
+            lambda e: sympy.expand(e),
+        )
 
         # Only return if expansion actually changed the expression
         if expanded != expr:

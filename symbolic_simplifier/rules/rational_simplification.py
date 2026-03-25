@@ -47,13 +47,7 @@ def apply_rule(expr, steps=None):
         # This automatically factors and cancels common terms
         canceled = sympy.cancel(expr)
 
-        # Also try simplify for additional simplification
-        simplified = sympy.simplify(canceled)
-
-        # Return the most simplified form
-        if simplified != expr:
-            return simplified
-        elif canceled != expr:
+        if canceled != expr:
             return canceled
 
         return expr

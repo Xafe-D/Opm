@@ -68,6 +68,25 @@ assert "5*x + 5" in out2["final_answer"], "Expected combined output"
 out3 = process("x+1", max_iterations=0)
 assert "max_iterations set to 0" in out3["formatted_trail"], "Expected max iteration stopping reason"
 
+# Rule-sequence validation for previous bug reports
+out4 = process("(x+1)(x+3)")
+assert "Step 5: Multi-Term Distribution" in out4["formatted_trail"], "Expected Multi-Term Distribution on (x+1)(x+3)"
+assert "x^2 + x + 3*x + 3" in out4["formatted_trail"], "Expected explicit non-combined expansion terms for student clarity"
+out4b = process("2(x+1)(x+2)+(x+1)^2")
+assert "Step 5: Binomial Expansion" in out4b["formatted_trail"], "Expected Binomial Expansion step for test 12"
+assert "Step 6: Combine Like Terms" in out4b["formatted_trail"] or "Step 6: Multi-Term Distribution" in out4b["formatted_trail"], "Expected explicit Combine Like Terms after expansion"
+out5 = process("2(x+1)^2")
+assert "Step 5: Binomial Expansion" in out5["formatted_trail"], "Expected Binomial Expansion step for test 9"
+assert "Step 6: Distributive Property" in out5["formatted_trail"], "Expected Distributive Property explicitly after binomial expansion"
+out6 = process("(x^2 - 1)/(x - 1)")
+assert "Special Products" in out6["formatted_trail"] or "Rational Expression Simplification" in out6["formatted_trail"], "Expected explicit numerator factoring for special product in rational case"
+assert "((x - 1)(x + 1))/(x - 1)" in out6["formatted_trail"], "Expected expanded numerator before cancellation"
+out5 = process("2x + 5x - 3")
+assert "Step 5: Combine Like Terms" in out5["formatted_trail"], "Expected Combine Like Terms for linear combine"
+
+out10 = process("x^2 + 5x + 6")
+assert "Factorization" in out10["formatted_trail"], "Expected Factorization to be detected in METHOD"
+
 print("All completion/stopping behavior tests passed.")
 
 print("\n======================================")

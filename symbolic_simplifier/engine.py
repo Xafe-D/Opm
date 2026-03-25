@@ -37,25 +37,58 @@ RULE_PIPELINE = [
     ("Combine Like Terms", apply_combine, "Combine coefficients of identical variables"),
     ("Rational Expression Simplification", apply_rational, "Cancel common factors in fractions"),
     ("Special Products", apply_special, "Factor special patterns"),
-    ("Factorization", apply_factor, "Factor polynomials"),
 ]
+
+# Keep factorization as a reporting/optional derived transformation only.
+FACTORIZATION_RULE = ("Factorization", apply_factor, "Factor polynomials")
+
+RULE_MAP = {
+    "Binomial Expansion": apply_binomial,
+    "Distributive Property": apply_distributive,
+    "Multi-Term Distribution": apply_multi_term,
+    "Exponent Rules": apply_exponent,
+    "Combine Like Terms": apply_combine,
+    "Rational Expression Simplification": apply_rational,
+    "Special Products": apply_special,
+    "Factorization": apply_factor,
+    "Polynomial Simplification": apply_polynomial,
+}
 
 
 def get_rule_pipeline(expr):
     """Return rule pipeline in correct order for the given expression."""
     num, den = expr.as_numer_denom()
     if den != 1:
-        # For true rational expressions (nontrivial denominator), prefer special products and rational simplification
-        # and factorization before expansions to avoid unnecessary numerator expansion.
+        # For true rational expressions, prefer recognizing special products in
+        # numerator before cancellation, so student-visible factoring appears.
         ordered = [
             ("Special Products", apply_special, "Factor special patterns"),
             ("Rational Expression Simplification", apply_rational, "Cancel common factors in fractions"),
-            ("Factorization", apply_factor, "Factor polynomials"),
         ]
-        # add remaining rules from base pipeline preserving order and avoiding duplicates
         for item in RULE_PIPELINE:
-            if item[0] not in {"Special Products", "Rational Expression Simplification", "Factorization"}:
+            if item[0] not in {"Special Products", "Rational Expression Simplification"}:
                 ordered.append(item)
+        return ordered
+
+    # For expressions that contain a multi-term product anywhere, prioritize multi-term distribution
+    def contains_multi_term_product(e):
+        from sympy import Mul, Add
+        if isinstance(e, Mul):
+            add_factors = [arg for arg in e.args if isinstance(arg, Add)]
+            if len(add_factors) > 1:
+                return True
+        return any(contains_multi_term_product(arg) for arg in getattr(e, "args", []))
+
+    if contains_multi_term_product(expr):
+        ordered = [
+            ("Binomial Expansion", apply_binomial, "Expand binomial powers"),
+            ("Multi-Term Distribution", apply_multi_term, "Expand products of multiple terms"),
+            ("Distributive Property", apply_distributive, "Expand multiplication over addition/subtraction"),
+            ("Exponent Rules", apply_exponent, "Apply power rules"),
+            ("Combine Like Terms", apply_combine, "Combine coefficients of identical variables"),
+            ("Rational Expression Simplification", apply_rational, "Cancel common factors in fractions"),
+            ("Special Products", apply_special, "Factor special patterns"),
+        ]
         return ordered
 
     return RULE_PIPELINE
@@ -195,10 +228,28 @@ def process(raw_expression: str, max_iterations: int = 20):
     else:
         method_lines.append("No transformation rules were required; the expression was already simplified.")
 
+    # If no transformation rules were actually applied and the final expression
+    # can be factored (e.g., x^2 + 5x + 6), report Factorization as post-processing.
+    def _needs_factorization(e):
+        from sympy import factor
+
+        if not e.is_polynomial():
+            return False
+        if isinstance(e, sympy.Mul):
+            return False
+
+        factored = factor(e)
+        return factored.is_Mul and sympy.srepr(factored) != sympy.srepr(e)
+
+    if not rule_steps_for_trail and _needs_factorization(expression):
+        method_lines.append(f"{len(method_lines) - 1}. Post-processing: Factorization — Factor polynomials")
+
+    # ---------------------------
+    # METHOD output and RULE STEP DETAILS
+    # ---------------------------
     trail["method"] = "\n".join(method_lines)
     trail["rule_steps"] = rule_steps_for_trail
-    # RULE STEP DETAILS
-    # ---------------------------
+
     for rstep in trail.get("rule_steps", []):
         sublines = [f"- {rstep['description']}"]
         before = rstep.get("before", "")
@@ -314,6 +365,7 @@ def process(raw_expression: str, max_iterations: int = 20):
     elapsed = time.time() - start_time
     # operations: if the method detector added lines after the header, list their names
     ops = []
+    post_ops = []
     for line in method_lines[2:]:
         # each line is like "1. Name — description"; take the part before the dash
         if "—" in line:
@@ -322,8 +374,15 @@ def process(raw_expression: str, max_iterations: int = 20):
             op = line.strip()
         # remove any leading numbering (e.g. "1.")
         op = op.lstrip('0123456789. ').strip()
-        ops.append(op)
+        if op in {"Factorization", "Post-processing: Factorization"}:
+            post_ops.append("Factorization")
+        else:
+            ops.append(op)
+
     ops_desc = ", ".join(ops) if ops else expr_type
+    if post_ops:
+        ops_desc = f"{ops_desc}; Post-processing: {', '.join(post_ops)}"
+
     trail["summary"] = (
         f"Expression type: {expr_type}\n"
         f"Operations detected: {ops_desc}\n"
@@ -372,143 +431,89 @@ def detect_method(expr):
         "Detected operations:",
     ]
 
-    original_expr = expr
-
     def has_binomial_power(e):
         from sympy import Pow, Add
         if isinstance(e, Pow) and isinstance(e.base, Add) and e.exp.is_Integer and e.exp > 1:
             return True
         return any(has_binomial_power(arg) for arg in getattr(e, "args", []))
 
-    def has_fraction(e):
-        from sympy import Rational, Pow, Mul
-        if isinstance(e, Rational):
+    def has_rational(e):
+        from sympy import Pow
+        num, den = e.as_numer_denom()
+        if den != 1:
             return True
-        if isinstance(e, Pow) and e.exp.is_Number and e.exp < 0:
-            return True
-        if isinstance(e, Mul):
-            return any(isinstance(arg, Pow) and arg.exp.is_Number and arg.exp < 0 for arg in e.args)
         return False
 
+    def has_distributive(e):
+        from sympy import Mul, Add, Pow
+        if isinstance(e, Mul):
+            add_factors = [arg for arg in e.args if isinstance(arg, Add)]
+            if len(add_factors) > 1:
+                # Prefer multi-term distribution for product of multiple additive factors
+                return False
+            if any(isinstance(arg, Add) for arg in e.args):
+                return True
+            if any(isinstance(arg, Pow) and isinstance(arg.base, Add) for arg in e.args):
+                return True
+        return any(has_distributive(arg) for arg in getattr(e, "args", []))
+
     def has_multi_term_distribution(e):
-        if has_fraction(e):
-            return False
         from sympy import Mul, Add
         if isinstance(e, Mul):
             add_factors = [arg for arg in e.args if isinstance(arg, Add)]
             return len(add_factors) > 1
         return any(has_multi_term_distribution(arg) for arg in getattr(e, "args", []))
 
-    def has_distributive(e):
-        from sympy import Mul, Add, Pow
-        if isinstance(e, Mul):
-            add_factors = [arg for arg in e.args if isinstance(arg, Add)]
-            if len(add_factors) == 1:
-                other_factors = [arg for arg in e.args if arg not in add_factors]
-                if any(isinstance(arg, Pow) and arg.exp.is_number and arg.exp < 0 for arg in other_factors):
-                    return False
-                return True
-            if len(add_factors) > 1:
-                other_factors = [arg for arg in e.args if arg not in add_factors]
-                if any(arg.is_Number for arg in other_factors):
-                    return True
-            pow_add = [arg for arg in e.args if isinstance(arg, Pow) and isinstance(arg.base, Add)]
-            if pow_add:
-                if any(arg.exp.is_number and arg.exp < 0 for arg in pow_add):
-                    return False
-                return True
-        return any(has_distributive(arg) for arg in getattr(e, "args", []))
-
     def has_exponent(e):
-        from sympy import Pow, Mul
-        if not e.has(Pow):
-            return False
-
-        if isinstance(e, Mul):
-            powers = [arg for arg in e.args if isinstance(arg, Pow)]
-            if len(powers) >= 2:
-                return True
-
+        from sympy import Pow
+        # detect exponent rules if any pow or power-of-power is present
         if isinstance(e, Pow) and isinstance(e.base, Pow):
             return True
-
-        # allow x^a/x^b with negative exponents in Mul form
-        if isinstance(e, Mul):
-            pow_args = [arg for arg in e.args if isinstance(arg, Pow)]
-            if len(pow_args) >= 2:
-                return True
-
-        return any(has_exponent(arg) for arg in getattr(e, "args", []))
+        if e.has(Pow):
+            return True
+        return False
 
     def has_like_terms(e):
-        from sympy import Add, Mul, Pow
-        if isinstance(original_expr, Mul):
-            if any(isinstance(arg, Pow) and arg.exp.is_number and arg.exp < 0 for arg in original_expr.args):
-                return False
-            add_factors = [arg for arg in original_expr.args if isinstance(arg, Add)]
-            if len(add_factors) > 1:
-                return True
+        from sympy import Add
+        # If expression requires distribution or multi-term expansion,
+        # combine-like-terms is conceptually part of the pipeline, even when no duplicates.
+        if has_distributive(e) or has_multi_term_distribution(e) or has_binomial_power(e):
+            return True
 
-        if isinstance(original_expr, Add) and len(original_expr.args) > 1:
-            has_binomial_pow = any(isinstance(arg, Pow) and isinstance(arg.base, Add) for arg in original_expr.args)
-            has_mul_with_add = any(isinstance(arg, Mul) and any(isinstance(a, Add) for a in arg.args) for arg in original_expr.args)
-            if has_binomial_pow and has_mul_with_add:
-                return True
+        if not isinstance(e, Add):
+            return False
 
-        if isinstance(e, Add):
-            monomials = []
-            for term in e.args:
-                coeff, vars_ = term.as_coeff_mul()
-                key = tuple(sorted(vars_, key=str))
-                monomials.append(key)
-            from collections import Counter
-            monomial_counts = Counter(monomials)
-            return any(count > 1 for count in monomial_counts.values())
+        if any(term.has(Add) for term in e.args):
+            return False
 
-        return any(has_like_terms(arg) for arg in getattr(e, "args", []))
+        from collections import Counter
+        monomials = []
+        for term in e.args:
+            coeff, factors = term.as_coeff_mul()
+            monomials.append(tuple(sorted(str(f) for f in factors)))
+        counts = Counter(monomials)
+        return any(count > 1 for count in counts.values())
 
     def has_special_product(e):
         from .rules.special_products import _is_special_product
         return _is_special_product(e)
 
-
     def has_factorization(e):
-        from sympy import factor, Mul, Add, Pow
-        if has_special_product(e):
-            return False
-        if isinstance(original_expr, Add) and len(original_expr.args) > 1:
-            has_binomial_pow = any(isinstance(arg, Pow) and isinstance(arg.base, Add) for arg in original_expr.args)
-            has_mul_with_add = any(isinstance(arg, Mul) and any(isinstance(a, Add) for a in arg.args) for arg in original_expr.args)
-            if has_binomial_pow and has_mul_with_add:
-                return False
-        if isinstance(original_expr, Mul) and any(isinstance(arg, Add) for arg in original_expr.args):
-            return False
+        from sympy import factor
         try:
-            factored = factor(e)
+            if has_special_product(e):
+                return False
+            # Already factored form should not trigger factorization.
+            if isinstance(e, sympy.Mul):
+                return False
+            # Factorization aims at expressing a polynomial as a product of simpler factors.
+            if e.is_Add or e.is_poly:
+                factored = factor(e)
+                if factored.is_Mul and sympy.srepr(factored) != sympy.srepr(e):
+                    return True
+            return False
         except Exception:
             return False
-        if factored == e:
-            return False
-        if isinstance(factored, Mul):
-            non_constant_factors = [f for f in factored.args if not f.is_Number]
-            return len(non_constant_factors) >= 2
-        return False
-
-    def has_polynomial(e):
-        if not e.is_polynomial():
-            return False
-        from sympy import Add
-        if isinstance(e, Add):
-            degrees = []
-            for term in e.args:
-                if term.is_polynomial():
-                    poly = term.as_poly()
-                    deg = sum(poly.degree_list()) if poly is not None else 0
-                else:
-                    deg = 0
-                degrees.append(deg)
-            return degrees != sorted(degrees, reverse=True)
-        return False
 
     context_checks = {
         "Binomial Expansion": has_binomial_power,
@@ -516,16 +521,23 @@ def detect_method(expr):
         "Multi-Term Distribution": has_multi_term_distribution,
         "Exponent Rules": has_exponent,
         "Combine Like Terms": has_like_terms,
-        "Rational Expression Simplification": has_fraction,
+        "Rational Expression Simplification": has_rational,
         "Special Products": has_special_product,
         "Factorization": has_factorization,
     }
 
     pipeline = get_rule_pipeline(expr)
+    seen_rules = set()
     for idx, (name, _, desc) in enumerate(pipeline, start=1):
         check = context_checks.get(name)
         if check and check(expr):
             method_lines.append(f"{idx}. {name} — {desc}")
+            seen_rules.add(name)
+
+    # Add Factorization hint in METHOD if not part of the RULE_PIPELINE,
+    # because factorization is used for reporting and not as a destructive pipeline step.
+    if "Factorization" not in seen_rules and context_checks["Factorization"](expr):
+        method_lines.append(f"{len(method_lines) - 1}. Post-processing: Factorization — Factor polynomials")
 
     if len(method_lines) == 2:
         method_lines.append("No transformation rules were required; the expression was already simplified.")
@@ -549,12 +561,23 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
             new = func(expr, *args)
         except Exception:
             new = expr
+
         new_key = _sym.srepr(new)
 
-        if force_log:
-            if new != expr:
-                expr = new
-                visited.add(_sym.srepr(expr))
+        # If we only want to log rule even when not changed, we allow same/new and moved to `force_log`.
+        if not force_log:
+            if new_key in visited:
+                return False
+            if beautify_str(str(prev)) == beautify_str(str(new)):
+                return False
+
+        # update expression if changed
+        if new != expr:
+            expr = new
+            visited.add(new_key)
+
+        # Add step log when forced or when meaningful change occurred
+        if force_log or beautify_str(str(prev)) != beautify_str(str(new)):
             steps.append({
                 "rule": name,
                 "description": description,
@@ -562,130 +585,253 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
                 "before": beautify_str(str(prev)),
                 "result": beautify_str(str(new)),
             })
-            return
+            return new != prev
 
-        if new_key in visited:
-            return
+        return False
 
-        # Avoid logging purely syntactic noise (e.g., 1*16 -> 16) when
-        # nothing meaningful changed.
-        if beautify_str(str(prev)) == beautify_str(str(new)):
-            return
+    rule_categories = {
+        "Distributive Property": "Distribution",
+        "Multi-Term Distribution": "Distribution",
+        "Binomial Expansion": "Polynomial",
+        "Exponent Rules": "Exponents",
+        "Combine Like Terms": "Simplification",
+        "Rational Expression Simplification": "Rational",
+        "Special Products": "Factorization",
+    }
 
-        expr = new
-        visited.add(_sym.srepr(expr))
-        steps.append({
-            "rule": name,
-            "description": description,
-            "category": category,
-            "before": beautify_str(str(prev)),
-            "result": beautify_str(str(expr)),
-        })
+    def _has_pending_expansion(e):
+        from sympy import Add, Mul, Pow
 
+        def has_binomial_expression(x):
+            return isinstance(x, Pow) and isinstance(x.base, Add) and x.exp.is_Integer and x.exp > 1
 
-    def term_count(ex):
-        if ex is None:
-            return 0
-        if hasattr(ex, 'is_Add') and ex.is_Add:
-            return len(ex.args)
-        return 1
+        def has_distributive_pattern(x):
+            if isinstance(x, Mul):
+                add_factors = [arg for arg in x.args if isinstance(arg, Add)]
+                if len(add_factors) > 1:
+                    return True
+                if any(isinstance(arg, Add) for arg in x.args):
+                    return True
+            return False
 
-    def run_single_pass(current_expr):
-        nonlocal steps, expr
-        pipeline = get_rule_pipeline(current_expr)
-        binomial_candidate = False
-        multi_term_applied = False
+        if has_binomial_expression(e):
+            return True
+        if has_distributive_pattern(e):
+            return True
+        if isinstance(e, Add) or isinstance(e, Mul) or isinstance(e, Pow):
+            return any(_has_pending_expansion(arg) for arg in getattr(e, 'args', []))
+        return False
 
-        for idx, (name, func, desc) in enumerate(pipeline, start=1):
-            if name == "Factorization" and multi_term_applied:
-                # For educational trace, do not factor expanded polynomial that was
-                # recently produced by multi-term distribution in the same chain.
+    iteration = 0
+    while iteration < max_iterations:
+        iteration += 1
+        changed = False
+
+        # Pre-analyze to avoid unnecessary expansion of factored special forms
+        special_form = False
+        try:
+            from .rules.special_products import _is_special_product
+            special_form = _is_special_product(expr)
+        except Exception:
+            special_form = False
+
+        for name, func, desc in get_rule_pipeline(expr):
+            category = rule_categories.get(name, "Rule")
+
+            if special_form and name in {"Distributive Property", "Multi-Term Distribution"}:
                 continue
-            category = "Rule"
-            if name == "Distributive Property" or name == "Multi-Term Distribution":
-                category = "Distribution"
-            elif name in ["Binomial Expansion", "Polynomial Simplification"]:
-                category = "Polynomial"
-            elif name == "Special Products" or name == "Factorization":
-                category = "Factorization"
-            elif name == "Exponent Rules":
-                category = "Exponents"
-            elif name == "Rational Expression Simplification":
-                category = "Rational"
-            elif name == "Combine Like Terms":
-                category = "Simplification"
 
-            # detect special binomial+distribution shape: Number * (Add)**n
-            if name == "Binomial Expansion":
-                if isinstance(current_expr, sympy.Mul):
-                    coeffs = [arg for arg in current_expr.args if arg.is_Number]
-                    pow_add = [arg for arg in current_expr.args if isinstance(arg, sympy.Pow) and isinstance(arg.base, sympy.Add) and arg.exp.is_integer and arg.exp > 1]
-                    if coeffs and pow_add:
-                        binomial_candidate = True
+            if try_rule(name, func, desc, category):
+                changed = True
 
-            pre_terms = term_count(current_expr)
-            old_expr = current_expr
-            # We'll temporarily assign expr to current_expr and restore after try_rule
-            backup_expr = expr
-            expr = current_expr
-            try_rule(name, func, desc, category)
-            current_expr = expr
-            expr = backup_expr
-
-            # track whether multi-term distribution actually changed the expression
-            if name == "Multi-Term Distribution" and current_expr != old_expr:
-                multi_term_applied = True
-
-            # for binomial candidate, ensure distributive is captured for educational trace
-            if name == "Binomial Expansion" and binomial_candidate:
-                distributed = apply_distributive(current_expr)
-                if distributed != current_expr:
-                    # adjust expression in outer scope
-                    backup_expr = expr
-                    expr = current_expr
-                    try_rule(
-                        "Distributive Property",
-                        apply_distributive,
-                        "Expand multiplication over addition/subtraction",
-                        "Distribution",
-                    )
-                    current_expr = expr
-                    expr = backup_expr
-                else:
-                    # Log educational step even if expression did not change
-                    steps.append({
-                        "rule": "Distributive Property",
-                        "description": "Expand multiplication over addition/subtraction",
-                        "category": "Distribution",
-                        "before": beautify_str(str(current_expr)),
-                        "result": beautify_str(str(current_expr)),
-                    })
-
-            # after multi-term distribution, force combine-like-terms step for educational tracing
-            if name == "Multi-Term Distribution":
-                post_terms = term_count(current_expr)
-                # only force combine when the preceding rule actually changed the expression
-                # and the result is a sum or has fewer terms (indicates expansion)
-                if current_expr != old_expr and (current_expr.is_Add or post_terms < pre_terms):
-                    backup_expr = expr
-                    expr = current_expr
+                # After expansion, try combine-like-terms:
+                # - for Binomial/Distributive: only after no more pending expansion
+                # - for Multi-Term: immediately (will handle subterms and flatten)
+                if name in {"Binomial Expansion", "Distributive Property"}:
+                    if not _has_pending_expansion(expr):
+                        try_rule(
+                            "Combine Like Terms",
+                            apply_combine,
+                            "Combine coefficients of identical variables",
+                            "Simplification",
+                        )
+                elif name == "Multi-Term Distribution":
                     try_rule(
                         "Combine Like Terms",
                         apply_combine,
                         "Combine coefficients of identical variables",
                         "Simplification",
-                        force_log=True,
                     )
-                    current_expr = expr
-                    expr = backup_expr
 
-        return current_expr
+                # Re-run pipeline from first rule after each successful application
+                break
 
-    # Iteratively apply rules until fixed point or max_iterations reached
-    for iteration in range(1, max_iterations + 1):
-        old_expr = expr
-        expr = run_single_pass(expr)
-        if expr == old_expr:
+        if not changed:
             return expr, steps, f"Completed after {iteration} iteration(s): exact symbolic form reached."
 
     return expr, steps, f"Stopped after reaching max iterations ({max_iterations})."
+
+
+def process_by_rule(raw_expression: str, rule_name: str):
+    """
+    Process an expression using only a specific rule.
+    Returns the result with a trail indicating if the rule was applied.
+    """
+    start_time = time.time()
+    steps = []
+    logical_step_counter = 0
+
+    def log_step(description, sublines=None):
+        nonlocal logical_step_counter
+        logical_step_counter += 1
+        steps.append(f"Step {logical_step_counter}: {description}")
+        if sublines:
+            for sub in sublines:
+                steps.append(f"    {sub}")
+
+    trail = {
+        "given": raw_expression,
+        "method": f"METHOD: {rule_name} only",
+        "steps": steps,
+        "rule_steps": [],
+        "factored_form": "",
+        "canonical_form": "",
+        "log_note": "",
+        "verification": "",
+        "summary": ""
+    }
+
+    # GIVEN
+    log_step(f"Original expression: {raw_expression}")
+
+    # VALIDATION
+    valid, msg = validate_expression(raw_expression)
+    if not valid:
+        steps.append(f"Step {logical_step_counter + 1}: Validation failed: {msg}")
+        trail["summary"] = "Computation terminated due to validation error."
+        return {
+            "status": "error",
+            "error_message": msg,
+            "final_answer": None,
+            "final_answers": None,
+            "formatted_trail": format_trail(trail),
+        }
+
+    detected_vars = "N/A"
+    try:
+        expr_str = raw_expression.replace("^", "**")
+        transformations = standard_transformations + (
+            implicit_multiplication_application,
+        )
+        sym_expr = parse_expr(
+            expr_str,
+            transformations=transformations,
+            evaluate=False,
+        )
+        vars_detected = sorted([str(s) for s in sym_expr.free_symbols])
+        detected_vars = ", ".join(vars_detected)
+    except:
+        pass
+    log_step(
+        "Validation",
+        [
+            "- Checked expression syntax: valid",
+            f"- Detected variable(s): {detected_vars}",
+        ],
+    )
+
+    # PARSING
+    try:
+        expression = parse_expression(raw_expression)
+        log_step(
+            "Parsing",
+            [
+                f"- Converted input into SymPy symbolic object: {beautify_str(str(expression))}"
+            ],
+        )
+    except Exception as e:
+        steps.append(f"ERROR: Could not parse expression. {str(e)}")
+        trail["summary"] = "Computation terminated due to parsing error."
+        return {
+            "status": "error",
+            "error_message": f"Parsing error: {str(e)}",
+            "final_answer": None,
+            "final_answers": None,
+            "formatted_trail": format_trail(trail),
+        }
+
+    # Check if rule exists
+    if rule_name not in RULE_MAP:
+        error_msg = f"Unknown rule: {rule_name}"
+        steps.append(f"ERROR: {error_msg}")
+        trail["summary"] = error_msg
+        return {
+            "status": "error",
+            "error_message": error_msg,
+            "final_answer": None,
+            "final_answers": None,
+            "formatted_trail": format_trail(trail),
+        }
+
+    # Apply the specific rule
+    rule_func = RULE_MAP[rule_name]
+    
+    # Get description from RULE_PIPELINE or FACTORIZATION_RULE
+    rule_desc = ""
+    for name, func, desc in RULE_PIPELINE:
+        if name == rule_name:
+            rule_desc = desc
+            break
+    if not rule_desc and rule_name == "Factorization":
+        rule_desc = "Factor polynomials"
+    if not rule_desc:
+        rule_desc = f"Apply {rule_name.lower()}"
+
+    original_expr = expression
+    try:
+        new_expr = rule_func(expression)
+    except Exception as e:
+        new_expr = expression
+        log_step(f"Rule application failed: {str(e)}")
+
+    if beautify_str(str(original_expr)) == beautify_str(str(new_expr)):
+        # No change
+        log_step(
+            f"Applied {rule_name}",
+            [
+                f"- Attempted to apply: {rule_desc}",
+                "- No applicable pattern detected",
+                f"- Result: {beautify_str(str(new_expr))} (No changes made)"
+            ]
+        )
+        trail["log_note"] = f"No {rule_name.lower()} pattern detected."
+        trail["summary"] = f"FINAL ANSWER: {beautify_str(str(new_expr))}"
+    else:
+        # Changed
+        log_step(
+            f"Applied {rule_name}",
+            [
+                f"- Applied: {rule_desc}",
+                f"- Before: {beautify_str(str(original_expr))}",
+                f"- After: {beautify_str(str(new_expr))}"
+            ]
+        )
+        trail["rule_steps"] = [{
+            "rule": rule_name,
+            "description": rule_desc,
+            "before": beautify_str(str(original_expr)),
+            "result": beautify_str(str(new_expr)),
+        }]
+        trail["log_note"] = f"Successfully applied {rule_name.lower()}."
+        trail["summary"] = f"FINAL ANSWER: {beautify_str(str(new_expr))}"
+
+    end_time = time.time()
+    processing_time = end_time - start_time
+
+    return {
+        "status": "success",
+        "final_answer": beautify_str(str(new_expr)),
+        "final_answers": [beautify_str(str(new_expr))],
+        "processing_time": processing_time,
+        "formatted_trail": format_trail(trail),
+    }

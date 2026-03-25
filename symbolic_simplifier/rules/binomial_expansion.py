@@ -22,6 +22,32 @@ def _contains_binomial_power(expr):
     return any(_contains_binomial_power(arg) for arg in getattr(expr, "args", []))
 
 
+def _expand_binomial_only(expr):
+    from sympy import Add, Mul, Pow
+
+    if isinstance(expr, Pow) and isinstance(expr.base, Add) and expr.exp.is_Integer and expr.exp > 1:
+        expanded = sympy.expand(expr)
+        return Add(*expanded.args, evaluate=False)
+
+    if isinstance(expr, Mul):
+        args = [_expand_binomial_only(a) for a in expr.args]
+        return Mul(*args, evaluate=False)
+
+    if isinstance(expr, Add):
+        args = [_expand_binomial_only(a) for a in expr.args]
+        return Add(*args, evaluate=False)
+
+    if isinstance(expr, Pow):
+        base = _expand_binomial_only(expr.base)
+        return Pow(base, expr.exp, evaluate=False)
+
+    if hasattr(expr, "args") and expr.args:
+        args = [_expand_binomial_only(a) for a in expr.args]
+        return expr.func(*args, evaluate=False)
+
+    return expr
+
+
 def apply_rule(expr):
     """Apply binomial expansion rule to the expression.
 
@@ -36,21 +62,11 @@ def apply_rule(expr):
         Expression with binomial expansions applied
     """
     try:
-        # Only expand when we actually have a binomial power; avoid turning
-        # distributive/multi-term products into expanded form prematurely.
         if not _contains_binomial_power(expr):
             return expr
 
-        # Expand only the binomial power parts (e.g., (x+1)^2) and keep
-        # surrounding multiplication/distribution intact.
-        from sympy import Pow, Add
+        expanded = _expand_binomial_only(expr)
 
-        expanded = expr.replace(
-            lambda e: isinstance(e, Pow) and isinstance(e.base, Add) and e.exp.is_Integer and e.exp > 1,
-            lambda e: sympy.expand(e),
-        )
-
-        # Only return if expansion actually changed the expression
         if expanded != expr:
             return expanded
 

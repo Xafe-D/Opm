@@ -15,6 +15,7 @@ from datetime import datetime
 
 # Import the core engine and utilities
 from . import process
+from .engine import process_by_rule
 from .ui.interface import RetroButton
 
 # For PDF export (requires reportlab package)
@@ -48,6 +49,7 @@ class SymbolicMathApp(tk.Widget):
         self.history = []  # list of dicts: {'expression','final','trail','timestamp'}
         self.history_path = os.path.join(os.getcwd(), "history.json")
         self.is_processing = False
+        self.dedicated_panels = []  # list of open dedicated panel windows
         self.compute_button = None
         # compute typical entry width based on placeholder text
         sample_text = "x+99 (2000-01-01 00:00:00)"
@@ -88,6 +90,38 @@ class SymbolicMathApp(tk.Widget):
         except Exception:
             pass
         self.history_visible = True
+
+        # RULE ICONS
+        tk.Label(self.sidebar_frame, text="RULES", font=self.base_bold, bg="#e0e0e0").pack(pady=(10,0))
+        icons_frame = tk.Frame(self.sidebar_frame, bg="#e0e0e0")
+        icons_frame.pack(pady=(5,5))
+        
+        # Define rule icons (short names for buttons)
+        rule_icons = {
+            "Binomial Expansion": "📈",
+            "Distributive Property": "➗",
+            "Multi-Term Distribution": "✖️",
+            "Exponent Rules": "🔥",
+            "Combine Like Terms": "➕",
+            "Rational Expression Simplification": "📐",
+            "Special Products": "🎯",
+            "Factorization": "🔧",
+            "Polynomial Simplification": "📊"
+        }
+        
+        for rule_name, icon in rule_icons.items():
+            btn = tk.Button(
+                icons_frame,
+                text=icon,
+                font=("Consolas", 12),
+                bg="#e0e0e0",
+                fg="#000000",
+                relief=tk.FLAT,
+                command=lambda r=rule_name: self.open_dedicated_panel(r)
+            )
+            btn.pack(side="left", padx=2)
+            # Add hover tooltip
+            self.add_tooltip(btn, rule_name)
 
         # HISTORY SIDEBAR
         tk.Label(self.sidebar_frame, text="HISTORY", font=self.base_bold, bg="#e0e0e0").pack(pady=(10,0))
@@ -227,6 +261,210 @@ class SymbolicMathApp(tk.Widget):
 
         # collapse history by default
         self.toggle_history(initial=True)
+
+    def add_tooltip(self, widget, text):
+        """Add a tooltip to a widget."""
+        def enter(event):
+            self.tooltip = tk.Toplevel()
+            self.tooltip.wm_overrideredirect(True)
+            self.tooltip.wm_geometry("+0+0")
+            label = tk.Label(self.tooltip, text=text, bg="#ffffe0", relief="solid", borderwidth=1, font=("Consolas", 8))
+            label.pack()
+            # Position tooltip near the widget
+            x = event.widget.winfo_rootx() + 20
+            y = event.widget.winfo_rooty() + event.widget.winfo_height() + 5
+            self.tooltip.wm_geometry(f"+{x}+{y}")
+        
+        def leave(event):
+            if hasattr(self, 'tooltip'):
+                self.tooltip.destroy()
+        
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
+
+    def open_dedicated_panel(self, rule_name):
+        """Open a dedicated panel for a specific rule."""
+        # Limit to 4 concurrent panels
+        if len(self.dedicated_panels) >= 4:
+            messagebox.showwarning("PANEL LIMIT", "Maximum 4 dedicated panels allowed. Close some panels first.", parent=self.root)
+            return
+        
+        # Create new window
+        panel = tk.Toplevel(self.root)
+        panel.title(f"OPM - {rule_name} Panel")
+        panel.geometry("800x600")
+        panel.configure(bg="#d1d1d1")
+        
+        # Track the panel
+        self.dedicated_panels.append(panel)
+        panel.protocol("WM_DELETE_WINDOW", lambda: self.close_dedicated_panel(panel))
+        
+        # Title
+        title_frame = tk.Frame(panel, bg="#d1d1d1")
+        title_frame.pack(fill="x", padx=5, pady=10)
+        
+        title_label = tk.Label(
+            title_frame,
+            text=f"{rule_name.upper()} PANEL",
+            font=("Courier", 15, "bold"),
+            bg="#d1d1d1",
+            fg="#000000",
+            justify="left"
+        )
+        title_label.pack(side="left")
+        
+        # Input panel
+        input_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        input_frame.pack(fill="x", padx=10, pady=5)
+        
+        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(side="left", padx=8, pady=5)
+        
+        expr_entry = tk.Entry(
+            input_frame,
+            font=self.code_font,
+            bg="#E9E9DF",
+            fg="#000000",
+            insertbackground="#000000",
+            relief=tk.SUNKEN,
+            bd=2
+        )
+        expr_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5, ipady=4)
+        
+        # Compute button
+        RetroButton(input_frame, "▶ APPLY RULE", command=lambda: self.compute_dedicated(panel, expr_entry, rule_name)).pack(side="right", padx=5)
+        
+        # Button panel (similar to main panel)
+        buttons_inner = tk.Frame(panel, bg="#d1d1d1")
+        buttons_inner.pack(pady=10)
+        
+        RetroButton(buttons_inner, "🧹 CLEAR", command=lambda: self.clear_dedicated_fields(panel)).pack(side="left", padx=5)
+        RetroButton(buttons_inner, "📋 COPY", command=lambda: self.copy_dedicated_trail(panel)).pack(side="left", padx=5)
+        RetroButton(buttons_inner, "💾 EXPORT", command=lambda: self.export_dedicated_trail(panel)).pack(side="left", padx=5)
+        
+        # Processing status panel
+        status_frame = tk.Frame(panel, bg="#d1d1d1")
+        status_frame.pack(fill="x", padx=10, pady=(0, 8))
+        
+        status_label = tk.Label(status_frame, text="⏳ IDLE", font=self.base_font, bg="#d1d1d1", fg="#000000")
+        status_label.pack(side="left", padx=5)
+        
+        progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
+        progress_bar.pack(side="left", fill="x", expand=True, padx=6)
+        
+        # Final answer panel
+        final_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        final_frame.pack(fill="x", padx=10, pady=5)
+        
+        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg="#d1d1d1", fg="#0f5f0f").pack(anchor="w", padx=8, pady=5)
+        
+        final_label = tk.Label(
+            final_frame,
+            text="[Awaiting Input]",
+            font=self.base_bold,
+            bg="#E9E9DF",
+            fg="#000000",
+            wraplength=700,
+            justify="left",
+            pady=8,
+            padx=8,
+            relief=tk.FLAT
+        )
+        final_label.pack(fill="x", padx=5, pady=(0, 5))
+        
+        # Solution trail panel
+        trail_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        trail_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(anchor="w", padx=5, pady=3)
+        
+        trail_text = tk.Text(
+            trail_frame,
+            wrap="word",
+            font=self.base_font,
+            bg="#E9E9DF",
+            fg="#000000",
+            insertbackground="#000000",
+            relief=tk.SUNKEN,
+            bd=2,
+            state="disabled"
+        )
+        trail_text.pack(fill="both", expand=True, padx=5, pady=5)
+        trail_text.tag_config("header", font=self.base_bold, foreground="#2d2d8f")
+        trail_text.tag_config("section", foreground="#0f0f0f")
+        
+        # Store references in panel
+        panel.expr_entry = expr_entry
+        panel.final_label = final_label
+        panel.trail_text = trail_text
+        panel.status_label = status_label
+        panel.progress_bar = progress_bar
+        panel.rule_name = rule_name
+
+    def close_dedicated_panel(self, panel):
+        """Close a dedicated panel."""
+        if panel in self.dedicated_panels:
+            self.dedicated_panels.remove(panel)
+        panel.destroy()
+
+    def compute_dedicated(self, panel, expr_entry, rule_name):
+        """Compute expression using only the specified rule."""
+        expr = expr_entry.get().strip()
+        if not expr:
+            messagebox.showwarning("INPUT ERROR", "[!] Please enter an expression.", parent=panel)
+            return
+        
+        # Update status and start progress
+        panel.status_label.config(text="⏳ PROCESSING...", fg="#3b5998")
+        panel.progress_bar.start(10)
+        
+        try:
+            result = process_by_rule(expr, rule_name)
+            
+            if result["status"] == "success":
+                panel.final_label.config(text=result["final_answer"])
+                panel.trail_text.config(state="normal")
+                panel.trail_text.delete(1.0, tk.END)
+                panel.trail_text.insert(tk.END, result["formatted_trail"])
+                panel.trail_text.config(state="disabled")
+            else:
+                messagebox.showerror("ERROR", result["error_message"], parent=panel)
+                
+        except Exception as e:
+            messagebox.showerror("ERROR", f"Processing failed: {str(e)}", parent=panel)
+        finally:
+            # Reset status
+            panel.status_label.config(text="⏳ IDLE", fg="#000000")
+            panel.progress_bar.stop()
+
+    # ---- dedicated panel methods ---------------------------------------------
+    def clear_dedicated_fields(self, panel):
+        """Clear all input and output fields in dedicated panel."""
+        panel.expr_entry.delete(0, tk.END)
+        panel.final_label.config(text="[Awaiting Input]")
+        panel.trail_text.config(state="normal")
+        panel.trail_text.delete("1.0", tk.END)
+        panel.trail_text.config(state="disabled")
+
+    def copy_dedicated_trail(self, panel):
+        """Copy the solution trail from dedicated panel to clipboard."""
+        trail_content = panel.trail_text.get("1.0", tk.END).strip()
+        if trail_content:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(trail_content)
+            self.show_info_dialog("[✓] Solution trail copied to clipboard.", "Copy Successful")
+
+    def export_dedicated_trail(self, panel):
+        """Export the solution trail from dedicated panel."""
+        trail_content = panel.trail_text.get("1.0", tk.END).strip()
+        if not trail_content:
+            self.show_info_dialog("[!] No trail to export.", "Export Failed")
+            return
+
+        fmt = self.choose_export_format()
+        if fmt == 'pdf':
+            self.export_pdf(trail_content)
+        elif fmt == 'txt':
+            self.export_txt(trail_content)
 
     def compute_expression(self):
         """Entry point: start background processing and show progress."""

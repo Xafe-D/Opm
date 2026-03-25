@@ -1,8 +1,0 @@
-[DEBUG] Rule: Combine Like Terms
-  Before: -x + x
-  After: 0
-  Changed: True
-[DEBUG] Rule: Rational Expression Simplification
-  Before: 0
-  After: 0
-  Changed: False

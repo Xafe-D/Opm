@@ -14,16 +14,21 @@ import sympy
 def apply_rule(expr):
     """Apply polynomial simplification rule to the expression.
 
-    Performs polynomial-specific operations:
-    - Combines like terms
+    STRICT ENFORCEMENT: Only simplifies ALREADY-EXPANDED polynomials.
+    Does NOT expand products (that's Multi-Term Distribution's job).
+    
+    Performs polynomial-specific operations on simplified forms:
+    - Combines like terms (x^2 + 2x^2 → 3x^2)
     - Arranges terms by descending degree
-    - Converts to standard polynomial form
     - Removes zero coefficients
-
+    
     Examples:
-    x^2 + 3x + 2x^2 → 3x^2 + 3x (combine like terms)
-    x + x^2 → x^2 + x (arrange by degree)
-
+    x^2 + 2x^2 + 3x → 3x^2 + 3x (combine like terms)
+    3x + x^2 → x^2 + 3x (arrange by degree)
+    
+    Does NOT handle:
+    (x+1)(x+2) → use Multi-Term Distribution instead
+    
     Args:
         expr: SymPy expression (should be polynomial)
 
@@ -31,32 +36,29 @@ def apply_rule(expr):
         Simplified polynomial in standard form
     """
     try:
+        from sympy import Add, Mul
+        
         # Check if expression is a polynomial
         if not expr.is_polynomial():
             return expr
 
-        # Use SymPy's Poly class for polynomial operations
-        # This provides better polynomial manipulation
-        poly = sympy.Poly(expr)
+        # STRICT: Only simplify, don't expand
+        # Check if there are unexpanded products (Mul with Add factors)
+        has_unexpanded_products = False
+        for subexpr in expr.atoms(Mul):
+            add_count = sum(1 for arg in subexpr.args if isinstance(arg, Add))
+            if add_count > 1:  # Multiple adds being multiplied together = unexpanded
+                has_unexpanded_products = True
+                break
 
-        # Get the polynomial in standard form (expanded and collected)
-        standard_form = poly.as_expr()
+        if has_unexpanded_products:
+            # Don't expand; this should be handled by Multi-Term Distribution
+            return expr
 
-        # Also try to collect terms by variables
-        collected = sympy.collect(standard_form, expr.free_symbols, evaluate=True)
+        # Collect and simplify like terms without expanding new products
+        collected = sympy.collect(expr, expr.free_symbols, evaluate=True)
 
-        # Use simplify for final cleanup
-        simplified = sympy.simplify(collected)
-
-        # Return the most appropriate form
-        if simplified != expr:
-            return simplified
-        elif collected != expr:
-            return collected
-        elif standard_form != expr:
-            return standard_form
-
-        return expr
+        return collected if collected != expr else expr
     except:
         # Fallback to basic simplification if polynomial operations fail
-        return sympy.simplify(expr)
+        return expr

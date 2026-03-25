@@ -20,6 +20,8 @@ def _is_special_product(expr):
     b = Wild("b")
 
     def _matches_special(e):
+        if not e.free_symbols:
+            return False
         if e.match((a - b) * (a + b)):
             return True
         if e.match((a + b) ** 2):

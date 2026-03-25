@@ -13,42 +13,51 @@ import sympy
 def apply_rule(expr, raw_input=None):
     """Apply distributive property rule to the expression.
 
-    Expands multiplication over addition/subtraction, e.g.:
-    2(x + 3) → 2x + 6
-    a(b + c + d) → ab + ac + ad
-
+    STRICT ENFORCEMENT: Only distributes a SINGLE term over a sum.
+    
+    Valid patterns:
+    - 2(x + 3) → 2x + 6
+    - a(b + c) → ab + ac
+    - (coefficient or simple term) * (sum)
+    
+    INVALID patterns (rejected to Multi-Term Distribution):
+    - (x+1)(x+2) → NOT distributive, this is multi-term distribution
+    - (a+b)(c+d) → NOT distributive
+    
     Args:
         expr: SymPy expression to simplify
         raw_input: Original string input for pattern detection
 
     Returns:
-        Expression with distributive property applied
+        Expression with distributive property applied, or original if pattern doesn't match
     """
     try:
-        # Only apply when a single additive factor is being distributed.
-        from sympy import Mul, Add, Pow
+        from sympy import Mul, Add, Symbol
 
-        if not isinstance(expr, Mul):
+        # STRICT: Only apply to Mul where exactly ONE factor is an Add
+        # All other factors must NOT be Adds (to exclude multi-term distribution)
+        replacements = {}
+        for subexpr in expr.atoms(Mul):
+            add_count = sum(1 for arg in subexpr.args if isinstance(arg, Add))
+            
+            # Only apply distributive property if exactly ONE additive term
+            if add_count == 1:
+                # Verify all non-Add factors are non-symbolic or single terms
+                non_add_args = [arg for arg in subexpr.args if not isinstance(arg, Add)]
+                all_non_add_are_coefficients = all(
+                    arg.is_number or (isinstance(arg, Symbol) and arg.is_symbol)
+                    for arg in non_add_args
+                )
+                
+                if all_non_add_are_coefficients:
+                    expanded = sympy.expand(subexpr)
+                    if expanded != subexpr:
+                        replacements[subexpr] = expanded
+
+        if not replacements:
             return expr
 
-        add_factors = [arg for arg in expr.args if isinstance(arg, Add)]
-        pow_add = [arg for arg in expr.args if isinstance(arg, Pow) and isinstance(arg.base, Add) and arg.exp.is_number and arg.exp > 0]
-
-        if len(add_factors) == 1:
-            # Use SymPy's expand to distribute multiplication over addition
-            # This handles cases like 2*(x+3) → 2*x + 2*3
-            expanded = sympy.expand(expr)
-            # Only return the expanded form if it's different
-            if expanded != expr:
-                return expanded
-            return expr
-        elif pow_add:
-            # Handle cases like 2*(x+1)^2 → expand the power
-            expanded = sympy.expand(expr)
-            if expanded != expr:
-                return expanded
-            return expr
-
-        return expr
-    except:
+        new_expr = expr.xreplace(replacements)
+        return new_expr if new_expr != expr else expr
+    except Exception:
         return expr

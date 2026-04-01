@@ -160,13 +160,32 @@ class SymbolicMathApp(tk.Widget):
 
         title_label = tk.Label(
             title_frame,
-            text="SYMBOLIC MATH CALCULATOR",
+            text="OPM - SYMBOLIC MATH GENERATOR",
             font=("Courier", 15, "bold"),
             bg="#d1d1d1",
             fg="#000000",
             justify="left"
         )
         title_label.pack(side="left")
+
+        about_btn = tk.Button(
+            title_frame,
+            text="ℹ",
+            font=("Consolas", 17, "bold"),
+            bg="#d1d1d1",
+            fg="#000000",
+            activebackground="#d1d1d1",
+            activeforeground="#000000",
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            padx=2,
+            pady=2,
+            cursor="hand2",
+            command=self.show_about
+        )
+        about_btn.pack(side="left", padx=(0, 0), pady=1)
+        self.add_tooltip(about_btn, "About/Help")
 
         # toggle button for history sidebar
         self.toggle_btn = RetroButton(title_frame, "☰", command=self.toggle_history, width=3)
@@ -773,6 +792,102 @@ class SymbolicMathApp(tk.Widget):
 
         dlg.bind("<Return>", lambda e: close())
         dlg.bind("<Escape>", lambda e: close())
+
+        self.root.wait_window(dlg)
+
+    def show_about(self):
+        """Show the project About / Help dialog."""
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("About / Help")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.configure(bg="#d1d1d1")
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+        frame = tk.Frame(dlg, bg="#d1d1d1", padx=24, pady=18)
+        frame.pack(fill="both", expand=True)
+
+        tk.Label(
+            frame,
+            text="Project Name:",
+            font=self.base_bold,
+            bg="#d1d1d1",
+            fg="#000000",
+            anchor="w"
+        ).pack(fill="x")
+
+        tk.Label(
+            frame,
+            text="Symbolic: Simplify Expression Generator (SymPy)",
+            font=("Consolas", 11),
+            bg="#d1d1d1",
+            fg="#1a1a1a",
+            anchor="w"
+        ).pack(fill="x", pady=(0, 6))
+
+        tk.Label(
+            frame,
+            text="OPM - SYMBOLIC MATH GENERATOR",
+            font=("Consolas", 10, "italic"),
+            bg="#d1d1d1",
+            fg="#444444",
+            anchor="w"
+        ).pack(fill="x", pady=(0, 12))
+
+        tk.Label(
+            frame,
+            text="Members:",
+            font=self.base_bold,
+            bg="#d1d1d1",
+            fg="#000000",
+            anchor="w"
+        ).pack(fill="x")
+
+        tk.Label(
+            frame,
+            text="Miranda, Jessa Bien T.\nOakes, Kenneth Gabren E.\nPato, Mhira Shane O.",
+            font=self.base_font,
+            bg="#d1d1d1",
+            fg="#1a1a1a",
+            justify="left",
+            anchor="w"
+        ).pack(fill="x", pady=(0, 12))
+
+        tk.Label(
+            frame,
+            text="Version:",
+            font=self.base_bold,
+            bg="#d1d1d1",
+            fg="#000000",
+            anchor="w"
+        ).pack(fill="x")
+
+        tk.Label(
+            frame,
+            text="Version 1",
+            font=self.base_font,
+            bg="#d1d1d1",
+            fg="#000000",
+            anchor="w"
+        ).pack(fill="x", pady=(0, 16))
+
+        button_frame = tk.Frame(frame, bg="#d1d1d1")
+        button_frame.pack(fill="x")
+
+        RetroButton(button_frame, "CLOSE", command=dlg.destroy, width=10).pack(side="right")
+
+        dlg.update_idletasks()
+
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        dlg.geometry(f"+{x}+{y}")
+
+        dlg.bind("<Return>", lambda e: dlg.destroy())
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
 
         self.root.wait_window(dlg)
 

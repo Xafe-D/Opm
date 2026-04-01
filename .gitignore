@@ -1,0 +1,26 @@
+# --- Python Junk ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environment ---
+venv/
+env/
+.venv/
+
+# --- IDE / Editor Specific ---
+.vscode/
+.idea/
+.vs/
+
+# --- Build / Packaging Artifacts ---
+build/
+dist/
+*.spec
+
+# --- Databases / Data ---
+history.json
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db

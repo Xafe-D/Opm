@@ -52,6 +52,13 @@ class SymbolicMathApp:
         trail_display: Text widget for detailed step-by-step trail
     """
 
+
+def format_recommended_warning(message: str) -> str:
+    """Format a recommended next step message for display in the UI."""
+    if message.startswith("⚠️"):
+        return message
+    return f"⚠️ RECOMMENDED: {message}"
+
     def __init__(self, root):
         """Initialize the symbolic math application.
         

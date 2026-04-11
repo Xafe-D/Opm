@@ -1,0 +1,14 @@
+expr=3*(x+2)**2
+rule=Combine Like Terms
+final_answer=3*(x + 2)^2
+final_warning='⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining.'
+summary_warning='⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining.'
+formatted_trail=GIVEN\nProblem: Simplify the symbolic expression\nInput Expression: 3*(x+2)**2\nDetected Variables: x\n\nMETHOD\nMETHOD: Combine Like Terms only\n\nSTEPS\n⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining.\nStep 1: Original expression: 3*(x+2)**2\nStep 2: Validation\n    - Checked expression syntax: valid\n    - Detected variable(s): x\nStep 3: Parsing\n    - Converted input into SymPy symbolic object: 3*(x + 2)^2\n\nFINAL ANSWER\n⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining.\nFactored Form: 3*(x + 2)^2\nCanonical Simplified Form: 3*(x + 2)^2\n\nVERIFICATION\n\n\nSUMMARY\n⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining.\n3*(x + 2)^2
+---
+expr=(x+5)**2
+rule=Distributive Property
+final_answer=(x + 5)^2
+final_warning='⚠️ RECOMMENDED: Use Binomial Expansion Panel first before attempting distribution.'
+summary_warning='⚠️ RECOMMENDED: Use Binomial Expansion Panel first before attempting distribution.'
+formatted_trail=GIVEN\nProblem: Simplify the symbolic expression\nInput Expression: (x+5)**2\nDetected Variables: x\n\nMETHOD\nMETHOD: Distributive Property only\n\nSTEPS\n⚠️ RECOMMENDED: Use Binomial Expansion Panel first before attempting distribution.\nStep 1: Original expression: (x+5)**2\nStep 2: Validation\n    - Checked expression syntax: valid\n    - Detected variable(s): x\nStep 3: Parsing\n    - Converted input into SymPy symbolic object: (x + 5)^2\n\nFINAL ANSWER\n⚠️ RECOMMENDED: Use Binomial Expansion Panel first before attempting distribution.\nFactored Form: (x + 5)^2\nCanonical Simplified Form: (x + 5)^2\n\nVERIFICATION\n\n\nSUMMARY\n⚠️ RECOMMENDED: Use Binomial Expansion Panel first before attempting distribution.\n(x + 5)^2
+---

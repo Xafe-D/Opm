@@ -16,7 +16,7 @@ from datetime import datetime
 # Import the core engine and utilities
 from . import process
 from .engine import process_by_rule
-from .ui.interface import RetroButton
+from .ui.interface import RetroButton, format_recommended_warning
 
 # For PDF export (requires reportlab package)
 try:
@@ -440,7 +440,10 @@ class SymbolicMathApp(tk.Widget):
             result = process_by_rule(expr, rule_name)
             
             if result["status"] == "success":
-                panel.final_label.config(text=result["final_answer"])
+                final_text = result["final_answer"]
+                if result.get("final_warning"):
+                    final_text = f"{format_recommended_warning(result['final_warning'])}\n{final_text}"
+                panel.final_label.config(text=final_text)
                 panel.trail_text.config(state="normal")
                 panel.trail_text.delete(1.0, tk.END)
                 panel.trail_text.insert(tk.END, result["formatted_trail"])

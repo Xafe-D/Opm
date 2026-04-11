@@ -11,20 +11,44 @@ Functions:
 import sympy
 
 
-def apply_rule(expr):
+def _has_locked_terms(expr):
+    from sympy import Add, Mul, Pow
+
+    if isinstance(expr, Pow) and isinstance(expr.base, Add):
+        return True
+
+    if isinstance(expr, Mul):
+        if any(isinstance(arg, Add) for arg in expr.args):
+            return True
+
+    return any(_has_locked_terms(arg) for arg in getattr(expr, "args", []))
+
+
+def apply_rule(expr, warning_callback=None):
     """Apply combine like terms rule to the expression.
 
     Combines coefficients of identical terms, e.g.:
     3x + 2x → 5x
     x^2 + 3x^2 → 4x^2
 
+    If variables are locked inside parentheses with a multiplier or exponent,
+    do not simplify and optionally log a robustness warning.
+
     Args:
         expr: SymPy expression to simplify
+        warning_callback: Optional callable that accepts a warning string
 
     Returns:
         Expression with like terms combined
     """
     try:
+        if _has_locked_terms(expr):
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ RECOMMENDED: Use Binomial Expansion and Distributive Property panels first to unlock terms for combining."
+                )
+            return expr
+
         # Combine constant-only additive expressions first (e.g., 5 + 3 -> 8)
         if expr.is_Add and expr.free_symbols == set():
             combined_value = sympy.simplify(expr)

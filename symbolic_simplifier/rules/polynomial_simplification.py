@@ -11,7 +11,21 @@ Functions:
 import sympy
 
 
-def apply_rule(expr):
+def _contains_non_polynomial_elements(expr):
+    from sympy import Pow
+
+    # Detect explicit negative exponents or fractional denominators.
+    if isinstance(expr, Pow) and expr.exp.is_Number and expr.exp.is_negative:
+        return True
+
+    num, den = expr.as_numer_denom()
+    if den != 1:
+        return True
+
+    return any(_contains_non_polynomial_elements(arg) for arg in getattr(expr, "args", []))
+
+
+def apply_rule(expr, warning_callback=None):
     """Apply polynomial simplification rule to the expression.
 
     STRICT ENFORCEMENT: Only simplifies ALREADY-EXPANDED polynomials.
@@ -31,6 +45,7 @@ def apply_rule(expr):
     
     Args:
         expr: SymPy expression (should be polynomial)
+        warning_callback: Optional callable that accepts a warning string
 
     Returns:
         Simplified polynomial in standard form
@@ -38,27 +53,67 @@ def apply_rule(expr):
     try:
         from sympy import Add, Mul
         
-        # Check if expression is a polynomial
-        if not expr.is_polynomial():
+        if _contains_non_polynomial_elements(expr):
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ WARNING: Non-polynomial elements detected. Please use Rational Simplification or Exponent Rules for this input."
+                )
             return expr
 
-        # STRICT: Only simplify, don't expand
-        # Check if there are unexpanded products (Mul with Add factors)
-        has_unexpanded_products = False
+        if not expr.is_polynomial():
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ WARNING: Polynomial Simplification requires a polynomial expression. Use Factorization or Special Products if needed."
+                )
+            return expr
+
         for subexpr in expr.atoms(Mul):
             add_count = sum(1 for arg in subexpr.args if isinstance(arg, Add))
-            if add_count > 1:  # Multiple adds being multiplied together = unexpanded
-                has_unexpanded_products = True
-                break
+            if add_count > 1:
+                if warning_callback is not None:
+                    warning_callback(
+                        "⚠️ WARNING: The expression contains unexpanded products. Use Multi-Term Distribution before Polynomial Simplification."
+                    )
+                return expr
 
-        if has_unexpanded_products:
-            # Don't expand; this should be handled by Multi-Term Distribution
-            return expr
+        terms = list(expr.args) if isinstance(expr, sympy.Add) else [expr]
+        term_map = {}
+        degree_order = []
 
-        # Collect and simplify like terms without expanding new products
-        collected = sympy.collect(expr, expr.free_symbols, evaluate=True)
+        for term in terms:
+            coeff, factors = term.as_coeff_mul()
+            if len(factors) == 0:
+                key = sympy.Integer(1)
+            elif len(factors) == 1:
+                key = factors[0]
+            else:
+                key = sympy.Mul(*factors, evaluate=False)
 
-        return collected if collected != expr else expr
+            if key in term_map:
+                term_map[key] += coeff
+            else:
+                term_map[key] = coeff
+                degree_order.append((key, sympy.degree(term, *expr.free_symbols)))
+
+        simplified_terms = []
+        for key, _ in sorted(degree_order, key=lambda item: (-item[1], str(item[0]))):
+            coeff = term_map[key]
+            if coeff == 0:
+                continue
+            if key == 1:
+                simplified_terms.append(coeff)
+            elif coeff == 1:
+                simplified_terms.append(key)
+            elif coeff == -1:
+                simplified_terms.append(sympy.Mul(-1, key, evaluate=False))
+            else:
+                simplified_terms.append(sympy.Mul(coeff, key, evaluate=False))
+
+        if not simplified_terms:
+            return sympy.Integer(0)
+        if len(simplified_terms) == 1:
+            return simplified_terms[0]
+
+        return sympy.Add(*simplified_terms, evaluate=False)
     except:
-        # Fallback to basic simplification if polynomial operations fail
         return expr

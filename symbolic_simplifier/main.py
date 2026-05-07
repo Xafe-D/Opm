@@ -6,6 +6,7 @@ Integrates the modular engine with the retro-styled user interface.
 """
 
 import threading
+import re
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from tkinter import font as tkfont
@@ -38,12 +39,13 @@ class SymbolicMathApp(tk.Widget):
 
     def __init__(self, root):
         self.root = root
-        self.root.title("OPM - SYMBOLIC MATH GENERATOR v1.0")
+        self.root.title("SYMBOLIC MATH GENERATOR v1.0")
         self.root.geometry("1000x750")
-        self.root.configure(bg="#d1d1d1")
-        self.base_font = ("Consolas", 10)
-        self.base_bold = ("Consolas", 11, "bold")
-        self.code_font = ("Courier New", 10)
+        self.root.configure(bg="#e8e8e8")
+        self.base_font = ("Consolas", 11)
+        self.base_bold = ("Consolas", 12, "bold")
+        self.code_font = ("Consolas", 11)
+        self.panel_bg = "#f5f5f5"
 
         # history storage
         self.history = []  # list of dicts: {'expression','final','trail','timestamp'}
@@ -73,7 +75,7 @@ class SymbolicMathApp(tk.Widget):
         self.main_container = main_container  # keep reference for toggle
 
         # content area holds the existing UI elements (add first so sidebar ends up on right)
-        self.content_frame = tk.Frame(main_container, bg="#d1d1d1")
+        self.content_frame = tk.Frame(main_container, bg="#e8e8e8")
         main_container.add(self.content_frame)
         # let the content pane expand to fill available space
         try:
@@ -82,8 +84,8 @@ class SymbolicMathApp(tk.Widget):
             pass
 
         # sidebar for history/chat list placed on the right
-        self.sidebar_frame = tk.Frame(main_container, bg="#e0e0e0", width=60)
-        main_container.add(self.sidebar_frame, minsize=100)
+        self.sidebar_frame = tk.Frame(main_container, bg="#e0e0e0", width=220)
+        main_container.add(self.sidebar_frame, minsize=220)
         # keep sidebar from stretching when window is resized
         try:
             main_container.paneconfigure(self.sidebar_frame, stretch='never')
@@ -94,135 +96,245 @@ class SymbolicMathApp(tk.Widget):
         # RULE ICONS
         tk.Label(self.sidebar_frame, text="RULES", font=self.base_bold, bg="#e0e0e0").pack(pady=(10,0))
         icons_frame = tk.Frame(self.sidebar_frame, bg="#e0e0e0")
-        icons_frame.pack(pady=(5,5))
+        icons_frame.pack(pady=(5,5), padx=5)
         
-        # Define rule icons (short names for buttons)
-        rule_icons = {
-            "Binomial Expansion": "📈",
-            "Distributive Property": "➗",
-            "Multi-Term Distribution": "✖️",
-            "Exponent Rules": "🔥",
-            "Combine Like Terms": "➕",
-            "Rational Expression Simplification": "📐",
-            "Special Products": "🎯",
-            "Factorization": "🔧",
-            "Polynomial Simplification": "📊"
-        }
-        
-        for rule_name, icon in rule_icons.items():
+        # Define rule icons with short labels
+        rule_icons = [
+            ("Binomial Expansion", "📈", "Binomial"),
+            ("Distributive Property", "➗", "Distribute"),
+            ("Multi-Term Distribution", "✖️", "Multi-Term"),
+            ("Exponent Rules", "🔥", "Exponents"),
+            ("Combine Like Terms", "➕", "Combine"),
+            ("Rational Expression Simplification", "📐", "Rational"),
+            ("Special Products", "🎯", "Special"),
+            ("Factorization", "🔧", "Factor"),
+            ("Polynomial Simplification", "📊", "Polynomial")
+        ]
+
+        for index, (rule_name, icon, label_text) in enumerate(rule_icons):
+            icon_container = tk.Frame(icons_frame, bg="#e0e0e0")
+            icon_container.grid(row=index // 3, column=index % 3, padx=6, pady=6)
+
             btn = tk.Button(
-                icons_frame,
+                icon_container,
                 text=icon,
-                font=("Consolas", 12),
-                bg="#e0e0e0",
+                font=("Consolas", 14),
+                bg="#ffffff",
                 fg="#000000",
-                relief=tk.FLAT,
+                relief=tk.RAISED,
+                bd=1,
+                width=3,
+                height=1,
                 command=lambda r=rule_name: self.open_dedicated_panel(r)
             )
-            btn.pack(side="left", padx=2)
-            # Add hover tooltip
+            btn.pack(padx=2, pady=(0, 2))
+            tk.Label(
+                icon_container,
+                text=label_text,
+                font=("Consolas", 8),
+                bg="#e0e0e0",
+                fg="#333333",
+                wraplength=70,
+                justify="center"
+            ).pack()
             self.add_tooltip(btn, rule_name)
+
+        ttk.Separator(self.sidebar_frame, orient="horizontal").pack(fill="x", padx=10, pady=(8, 10))
 
         # HISTORY SIDEBAR
         tk.Label(self.sidebar_frame, text="HISTORY", font=self.base_bold, bg="#e0e0e0").pack(pady=(10,0))
         # container for listbox + scrollbar to keep scrollbar adjacent
         list_container = tk.Frame(self.sidebar_frame, bg="#e0e0e0")
         list_container.pack(fill="both", expand=True, padx=5, pady=5)
-        self.history_listbox = tk.Listbox(list_container, font=self.base_font)
-        self.history_listbox.pack(side="left", fill="both", expand=True)
+        self.history_listbox = tk.Listbox(
+            list_container,
+            font=self.base_font,
+            bg="#ffffff",
+            fg="#111111",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground="#c4c4c4",
+            selectbackground="#dce7ff",
+            activestyle="none"
+        )
+        self.history_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
         self.history_listbox.bind("<<ListboxSelect>>", self.on_history_select)
         hist_scroll = ttk.Scrollbar(list_container, command=self.history_listbox.yview)
         hist_scroll.pack(side="right", fill="y")
         self.history_listbox.config(yscrollcommand=hist_scroll.set)
 
-        RetroButton(self.sidebar_frame, "NEW", command=self.new_session, width=10).pack(pady=3)
-        RetroButton(self.sidebar_frame, "CLEAR", command=self.clear_history, width=10).pack(pady=3)
+        # Action buttons (NEW and CLEAR) - side-by-side
+        button_container = tk.Frame(self.sidebar_frame, bg="#e0e0e0")
+        button_container.pack(fill="x", padx=4, pady=8)
 
-        # TITLE BANNER
-        title_frame = tk.Frame(self.content_frame, bg="#d1d1d1")
-        title_frame.pack(fill="x", padx=5, pady=10)
+        # NEW button (primary - filled style)
+        tk.Button(
+            button_container,
+            text="NEW",
+            command=self.new_session,
+            font=("Consolas", 10, "bold"),
+            bg="#0f5f0f",
+            fg="#ffffff",
+            activebackground="#0b4b3f",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            bd=0,
+            padx=6,
+            pady=4,
+            cursor="hand2"
+        ).pack(side="left", fill="both", expand=True, padx=(0, 4))
 
-        # draw a compact rounded badge with black background
-        badge_bg = "#000000"
-        badge_fg = "#FFFFFF"
-        badge_canvas = tk.Canvas(title_frame, width=80, height=34, bg="#d1d1d1", highlightthickness=0)
-        radius = 8
-        x0, y0, x1, y1 = 2, 2, 78, 32
-        badge_canvas.create_arc(x0, y0, x0+radius*2, y0+radius*2, start=90, extent=90, fill=badge_bg, outline=badge_bg)
-        badge_canvas.create_arc(x1-radius*2, y0, x1, y0+radius*2, start=0, extent=90, fill=badge_bg, outline=badge_bg)
-        badge_canvas.create_arc(x0, y1-radius*2, x0+radius*2, y1, start=180, extent=90, fill=badge_bg, outline=badge_bg)
-        badge_canvas.create_arc(x1-radius*2, y1-radius*2, x1, y1, start=270, extent=90, fill=badge_bg, outline=badge_bg)
-        badge_canvas.create_rectangle(x0+radius, y0, x1-radius, y1, fill=badge_bg, outline=badge_bg)
-        badge_canvas.create_rectangle(x0, y0+radius, x1, y1-radius, fill=badge_bg, outline=badge_bg)
-        # center the text horizontally and vertically in the badge
-        badge_canvas.create_text((40, 17), text="OPM", font=("Courier", 13, "bold"), fill=badge_fg, anchor="center")
-        badge_canvas.pack(side="left", padx=(0, 8))
+        # CLEAR button (secondary - ghost style)
+        tk.Button(
+            button_container,
+            text="CLEAR",
+            command=self.clear_history,
+            font=("Consolas", 10, "bold"),
+            bg="#e8e8e8",
+            fg="#4b4b4b",
+            activebackground="#d5d5d5",
+            activeforeground="#2a2a2a",
+            relief=tk.SOLID,
+            bd=1,
+            padx=6,
+            pady=4,
+            cursor="hand2"
+        ).pack(side="left", fill="both", expand=True, padx=(4, 0))
 
-        title_label = tk.Label(
-            title_frame,
-            text="OPM - SYMBOLIC MATH GENERATOR",
-            font=("Courier", 15, "bold"),
-            bg="#d1d1d1",
-            fg="#000000",
-            justify="left"
+        # TITLE BANNER with Option B logo (block mark + serif)
+        title_frame = tk.Frame(self.content_frame, bg="#e8e8e8")
+        title_frame.pack(fill="x", padx=10, pady=12)
+
+        # Logo container with block mark and text
+        logo_frame = tk.Frame(title_frame, bg="#e8e8e8")
+        logo_frame.pack(side="left", fill="y", padx=(0, 12))
+
+        # Solid dark square monogram (block mark)
+        monogram_canvas = tk.Canvas(
+            logo_frame,
+            width=56,
+            height=56,
+            bg="#e8e8e8",
+            highlightthickness=0
         )
-        title_label.pack(side="left")
+        monogram_canvas.pack(side="left", padx=(0, 8))
+        monogram_canvas.create_rectangle(0, 0, 56, 56, fill="#1a1a1a", outline="#1a1a1a")
+        monogram_canvas.create_text(
+            28, 28,
+            text="O",
+            font=("Garamond", 32, "bold"),
+            fill="#ffffff",
+            anchor="center"
+        )
+
+        # Text section next to monogram
+        text_frame = tk.Frame(logo_frame, bg="#e8e8e8")
+        text_frame.pack(side="left", fill="both", expand=True)
+
+        tk.Label(
+            text_frame,
+            text="OPM",
+            font=("Consolas", 14, "bold"),
+            bg="#e8e8e8",
+            fg="#1f1f1f",
+            anchor="w"
+        ).pack(anchor="w")
+
+        tk.Label(
+            text_frame,
+            text="SYMBOLIC MATH GENERATOR",
+            font=("Consolas", 9, "italic"),
+            bg="#e8e8e8",
+            fg="#4b4b4b",
+            anchor="w"
+        ).pack(anchor="w")
+
+        # Utility actions on the right side of the header
+        util_frame = tk.Frame(title_frame, bg="#e8e8e8")
+        util_frame.pack(side="right", anchor="n")
 
         about_btn = tk.Button(
-            title_frame,
-            text="ℹ",
-            font=("Consolas", 17, "bold"),
-            bg="#d1d1d1",
-            fg="#000000",
-            activebackground="#d1d1d1",
-            activeforeground="#000000",
+            util_frame,
+            text="ⓘ",
+            font=("Consolas", 14),
+            bg="#e8e8e8",
+            fg="#6d6d6d",
+            activebackground="#e8e8e8",
+            activeforeground="#1f1f1f",
             relief=tk.FLAT,
             bd=0,
             highlightthickness=0,
-            padx=2,
-            pady=2,
+            padx=6,
+            pady=6,
             cursor="hand2",
             command=self.show_about
         )
-        about_btn.pack(side="left", padx=(0, 0), pady=1)
-        self.add_tooltip(about_btn, "About/Help")
+        about_btn.pack(side="left", padx=(0, 8))
+        self.add_tooltip(about_btn, "About / Help")
 
         # toggle button for history sidebar
-        self.toggle_btn = RetroButton(title_frame, "☰", command=self.toggle_history, width=3)
-        self.toggle_btn.pack(side="right", padx=5)
+        self.toggle_btn = RetroButton(util_frame, "☰", command=self.toggle_history, width=3)
+        self.toggle_btn.pack(side="left")
 
         # INPUT PANEL
-        input_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        input_frame = tk.Frame(self.content_frame, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         input_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(side="left", padx=8, pady=5)
+        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg=self.panel_bg, fg="#1f1f1f").pack(side="left", padx=10, pady=10)
         
         self.expression_entry = tk.Entry(
             input_frame,
             font=self.base_font,
-            bg="#E9E9DF",
+            bg="#ffffff",
             fg="#000000",
             insertbackground="#000000",
-            relief=tk.SUNKEN,
-            bd=2
+            relief=tk.FLAT,
+            bd=0
         )
-        self.expression_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5, ipady=4)
+        self.expression_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10, ipady=6)
 
         # BUTTON PANEL
-        buttons_inner = tk.Frame(self.content_frame, bg="#d1d1d1")
-        buttons_inner.pack(pady=10)
+        buttons_inner = tk.Frame(self.content_frame, bg="#e8e8e8")
+        buttons_inner.pack(pady=12)
         
-        self.compute_button = RetroButton(buttons_inner, "▶ COMPUTE", command=self.compute_expression)
-        self.compute_button.pack(side="left", padx=5)
-        RetroButton(buttons_inner, "🧹 CLEAR", command=self.clear_fields).pack(side="left", padx=5)
-        RetroButton(buttons_inner, "📋 COPY", command=self.copy_trail).pack(side="left", padx=5)
-        RetroButton(buttons_inner, "💾 EXPORT", command=self.export_trail_prompt).pack(side="left", padx=5)
+        self.compute_button = RetroButton(
+            buttons_inner,
+            "▶ COMPUTE",
+            command=self.compute_expression,
+            bg="#0f5f0f",
+            activebackground="#0b4b3f",
+            fg="#ffffff"
+        )
+        self.compute_button.pack(side="left", padx=6)
+        RetroButton(buttons_inner, "🧹 CLEAR", command=self.clear_fields, bg="#35356b", activebackground="#2a2a55").pack(side="left", padx=6)
+        RetroButton(buttons_inner, "📋 COPY", command=self.copy_trail, bg="#35356b", activebackground="#2a2a55").pack(side="left", padx=6)
+        RetroButton(buttons_inner, "💾 EXPORT", command=self.export_trail_prompt, bg="#35356b", activebackground="#2a2a55").pack(side="left", padx=6)
+
+        # PROCESSING STATUS PANEL (above Final Answer)
+        status_frame = tk.Frame(self.content_frame, bg="#e8e8e8")
+        status_frame.pack(fill="x", padx=10, pady=(5, 8))
+
+        self.status_label = tk.Label(
+            status_frame,
+            text="● IDLE",
+            font=self.base_font,
+            bg="#f5f5f5",
+            fg="#4b4b4b",
+            relief=tk.SOLID,
+            bd=1,
+            padx=8,
+            pady=4
+        )
+        self.status_label.pack(side="left", padx=5)
+
+        self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
+        self.progress_bar.pack(side="left", fill="x", expand=True, padx=6, pady=4)
 
         # FINAL ANSWER PANEL
-        final_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        final_frame = tk.Frame(self.content_frame, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         final_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg="#d1d1d1", fg="#0f5f0f").pack(anchor="w", padx=8, pady=5)
+        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg=self.panel_bg, fg="#0f5f0f").pack(anchor="w", padx=10, pady=10)
 
         self.final_answer_label = tk.Label(
             final_frame,
@@ -238,42 +350,42 @@ class SymbolicMathApp(tk.Widget):
         )
         self.final_answer_label.pack(fill="x", padx=5, pady=(0, 5))
 
-        # PROCESSING STATUS PANEL (moved below Final Answer, above Solution Trail)
-        status_frame = tk.Frame(self.content_frame, bg="#d1d1d1")
-        status_frame.pack(fill="x", padx=10, pady=(0, 8))
-
-        self.status_label = tk.Label(status_frame, text="⏳ IDLE", font=self.base_font, bg="#d1d1d1", fg="#000000")
-        self.status_label.pack(side="left", padx=5)
-
-        self.progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
-        self.progress_bar.pack(side="left", fill="x", expand=True, padx=6)
-
         # SOLUTION TRAIL PANEL
-        trail_frame = tk.Frame(self.content_frame, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        trail_frame = tk.Frame(self.content_frame, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         trail_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(anchor="w", padx=5, pady=3)
+        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg=self.panel_bg, fg="#1f1f1f").pack(anchor="w", padx=10, pady=10)
 
-        trail_inner = tk.Frame(trail_frame, bg="#d1d1d1")
-        trail_inner.pack(fill="both", expand=True, padx=3, pady=3)
+        trail_inner = tk.Frame(trail_frame, bg=self.panel_bg)
+        trail_inner.pack(fill="both", expand=True, padx=8, pady=(0, 10))
         
         self.trail_text = tk.Text(
             trail_inner,
             wrap="word",
             font=self.base_font,
-            bg="#E9E9DF",
+            bg="#ffffff",
             fg="#000000",
             insertbackground="#000000",
-            relief=tk.SUNKEN,
-            bd=2
+            relief=tk.FLAT,
+            bd=0,
+            padx=8,
+            pady=8
         )
         self.trail_text.pack(side="left", fill="both", expand=True)
         
         scrollbar = ttk.Scrollbar(trail_inner, command=self.trail_text.yview)
         scrollbar.pack(side="right", fill="y")
         self.trail_text.config(yscrollcommand=scrollbar.set, state="disabled")
-        self.trail_text.tag_config("header", font=self.base_bold, foreground="#2d2d8f")
-        self.trail_text.tag_config("section", foreground="#0f0f0f")
+        self.trail_text.tag_config("header_given", font=self.base_bold, foreground="#0b6c4f", spacing3=4)
+        self.trail_text.tag_config("header_method", font=self.base_bold, foreground="#a56c00", spacing3=4)
+        self.trail_text.tag_config("header_steps", font=self.base_bold, foreground="#17418a", spacing3=4)
+        self.trail_text.tag_config("header_final", font=self.base_bold, foreground="#0f5f0f", spacing3=4)
+        self.trail_text.tag_config("header_verify", font=self.base_bold, foreground="#5b3b7b", spacing3=4)
+        self.trail_text.tag_config("header_summary", font=self.base_bold, foreground="#4b4b18", spacing3=4)
+        self.trail_text.tag_config("section", foreground="#0f0f0f", lmargin1=10, lmargin2=10)
+        self.trail_text.tag_config("section_card", background="#f7f9fc", lmargin1=10, lmargin2=10, spacing1=4, spacing3=4)
+        self.trail_text.tag_config("quote", font=self.base_bold, foreground="#2d2d2d")
+        self.trail_text.tag_config("status_ok", font=self.base_bold, foreground="#0b6c4f")
 
         # populate history listbox (history loaded during init)
         self.update_history_list()
@@ -310,77 +422,87 @@ class SymbolicMathApp(tk.Widget):
         
         # Create new window
         panel = tk.Toplevel(self.root)
-        panel.title(f"OPM - {rule_name} Panel")
+        panel.title(f"{rule_name} Panel")
         panel.geometry("800x600")
-        panel.configure(bg="#d1d1d1")
+        panel.configure(bg="#e8e8e8")
         
         # Track the panel
         self.dedicated_panels.append(panel)
         panel.protocol("WM_DELETE_WINDOW", lambda: self.close_dedicated_panel(panel))
         
         # Title
-        title_frame = tk.Frame(panel, bg="#d1d1d1")
-        title_frame.pack(fill="x", padx=5, pady=10)
+        title_frame = tk.Frame(panel, bg="#e8e8e8")
+        title_frame.pack(fill="x", padx=10, pady=12)
         
         title_label = tk.Label(
             title_frame,
             text=f"{rule_name.upper()} PANEL",
-            font=("Courier", 15, "bold"),
-            bg="#d1d1d1",
-            fg="#000000",
+            font=("Consolas", 15, "bold"),
+            bg="#e8e8e8",
+            fg="#1f1f1f",
             justify="left"
         )
         title_label.pack(side="left")
         
         # Input panel
-        input_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        input_frame = tk.Frame(panel, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         input_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(side="left", padx=8, pady=5)
+        tk.Label(input_frame, text="INPUT EXPRESSION:", font=self.base_bold, bg=self.panel_bg, fg="#1f1f1f").pack(side="left", padx=10, pady=10)
         
         expr_entry = tk.Entry(
             input_frame,
             font=self.code_font,
-            bg="#E9E9DF",
+            bg="#ffffff",
             fg="#000000",
             insertbackground="#000000",
-            relief=tk.SUNKEN,
-            bd=2
+            relief=tk.FLAT,
+            bd=0
         )
-        expr_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5, ipady=4)
+        expr_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10, ipady=6)
         
         # Compute button
-        RetroButton(input_frame, "▶ APPLY RULE", command=lambda: self.compute_dedicated(panel, expr_entry, rule_name)).pack(side="right", padx=5)
+        RetroButton(input_frame, "▶ APPLY RULE", command=lambda: self.compute_dedicated(panel, expr_entry, rule_name), bg="#0f5f0f", activebackground="#0b4b3f", fg="#ffffff").pack(side="right", padx=8, pady=10)
         
         # Button panel (similar to main panel)
-        buttons_inner = tk.Frame(panel, bg="#d1d1d1")
-        buttons_inner.pack(pady=10)
+        buttons_inner = tk.Frame(panel, bg="#e8e8e8")
+        buttons_inner.pack(pady=12)
         
         RetroButton(buttons_inner, "🧹 CLEAR", command=lambda: self.clear_dedicated_fields(panel)).pack(side="left", padx=5)
         RetroButton(buttons_inner, "📋 COPY", command=lambda: self.copy_dedicated_trail(panel)).pack(side="left", padx=5)
         RetroButton(buttons_inner, "💾 EXPORT", command=lambda: self.export_dedicated_trail(panel)).pack(side="left", padx=5)
         
         # Processing status panel
-        status_frame = tk.Frame(panel, bg="#d1d1d1")
-        status_frame.pack(fill="x", padx=10, pady=(0, 8))
+        status_frame = tk.Frame(panel, bg="#e8e8e8")
+        status_frame.pack(fill="x", padx=10, pady=(5, 8))
         
-        status_label = tk.Label(status_frame, text="⏳ IDLE", font=self.base_font, bg="#d1d1d1", fg="#000000")
+        status_label = tk.Label(
+            status_frame,
+            text="● IDLE",
+            font=self.base_font,
+            bg="#f5f5f5",
+            fg="#4b4b4b",
+            relief=tk.SOLID,
+            bd=1,
+            padx=8,
+            pady=4
+        )
         status_label.pack(side="left", padx=5)
         
         progress_bar = ttk.Progressbar(status_frame, mode="indeterminate")
         progress_bar.pack(side="left", fill="x", expand=True, padx=6)
         
         # Final answer panel
-        final_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        final_frame = tk.Frame(panel, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         final_frame.pack(fill="x", padx=10, pady=5)
         
-        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg="#d1d1d1", fg="#0f5f0f").pack(anchor="w", padx=8, pady=5)
+        tk.Label(final_frame, text="✅ FINAL ANSWER", font=self.base_bold, bg=self.panel_bg, fg="#0f5f0f").pack(anchor="w", padx=10, pady=10)
         
         final_label = tk.Label(
             final_frame,
             text="[Awaiting Input]",
             font=self.base_bold,
-            bg="#E9E9DF",
+            bg="#ffffff",
             fg="#000000",
             wraplength=700,
             justify="left",
@@ -391,25 +513,43 @@ class SymbolicMathApp(tk.Widget):
         final_label.pack(fill="x", padx=5, pady=(0, 5))
         
         # Solution trail panel
-        trail_frame = tk.Frame(panel, bg="#d1d1d1", relief=tk.SUNKEN, bd=3)
+        trail_frame = tk.Frame(panel, bg=self.panel_bg, bd=1, relief=tk.SOLID)
         trail_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg="#d1d1d1", fg="#000000").pack(anchor="w", padx=5, pady=3)
+        tk.Label(trail_frame, text="SOLUTION TRAIL:", font=self.base_bold, bg=self.panel_bg, fg="#1f1f1f").pack(anchor="w", padx=10, pady=10)
+
+        trail_inner = tk.Frame(trail_frame, bg=self.panel_bg)
+        trail_inner.pack(fill="both", expand=True, padx=8, pady=(0, 10))
         
         trail_text = tk.Text(
-            trail_frame,
+            trail_inner,
             wrap="word",
             font=self.base_font,
-            bg="#E9E9DF",
+            bg="#ffffff",
             fg="#000000",
             insertbackground="#000000",
-            relief=tk.SUNKEN,
-            bd=2,
-            state="disabled"
+            relief=tk.FLAT,
+            bd=0,
+            state="disabled",
+            padx=8,
+            pady=8
         )
-        trail_text.pack(fill="both", expand=True, padx=5, pady=5)
-        trail_text.tag_config("header", font=self.base_bold, foreground="#2d2d8f")
-        trail_text.tag_config("section", foreground="#0f0f0f")
+        trail_text.pack(side="left", fill="both", expand=True)
+        
+        scrollbar = ttk.Scrollbar(trail_inner, command=trail_text.yview)
+        scrollbar.pack(side="right", fill="y")
+        trail_text.config(yscrollcommand=scrollbar.set)
+        
+        trail_text.tag_config("header_given", font=self.base_bold, foreground="#0b6c4f")
+        trail_text.tag_config("header_method", font=self.base_bold, foreground="#a56c00")
+        trail_text.tag_config("header_steps", font=self.base_bold, foreground="#17418a")
+        trail_text.tag_config("header_final", font=self.base_bold, foreground="#0f5f0f")
+        trail_text.tag_config("header_verify", font=self.base_bold, foreground="#5b3b7b")
+        trail_text.tag_config("header_summary", font=self.base_bold, foreground="#4b4b18")
+        trail_text.tag_config("section", foreground="#0f0f0f", lmargin1=10, lmargin2=10)
+        trail_text.tag_config("section_card", background="#f7f9fc", lmargin1=10, lmargin2=10, spacing1=4, spacing3=4)
+        trail_text.tag_config("quote", font=self.base_bold)
+        trail_text.tag_config("status_ok", font=self.base_bold, foreground="#0b6c4f")
         
         # Store references in panel
         panel.expr_entry = expr_entry
@@ -418,6 +558,24 @@ class SymbolicMathApp(tk.Widget):
         panel.status_label = status_label
         panel.progress_bar = progress_bar
         panel.rule_name = rule_name
+        
+        # Store badge map for dedicated panels
+        panel.badge_map = {
+            "GIVEN": "◉ GIVEN",
+            "METHOD": "◐ METHOD",
+            "STEPS": "◈ STEPS",
+            "FINAL ANSWER": "✔ FINAL ANSWER",
+            "VERIFICATION": "[?] VERIFICATION",
+            "SUMMARY": "▥ SUMMARY"
+        }
+        panel.header_tag_map = {
+            "GIVEN": "header_given",
+            "METHOD": "header_method",
+            "STEPS": "header_steps",
+            "FINAL ANSWER": "header_final",
+            "VERIFICATION": "header_verify",
+            "SUMMARY": "header_summary"
+        }
 
     def close_dedicated_panel(self, panel):
         """Close a dedicated panel."""
@@ -433,7 +591,7 @@ class SymbolicMathApp(tk.Widget):
             return
         
         # Update status and start progress
-        panel.status_label.config(text="⏳ PROCESSING...", fg="#3b5998")
+        panel.status_label.config(text="⏳ PROCESSING...", fg="#0a5fa0")
         panel.progress_bar.start(10)
         
         try:
@@ -446,7 +604,58 @@ class SymbolicMathApp(tk.Widget):
                 panel.final_label.config(text=final_text)
                 panel.trail_text.config(state="normal")
                 panel.trail_text.delete(1.0, tk.END)
-                panel.trail_text.insert(tk.END, result["formatted_trail"])
+                
+                # Render formatted trail with icons and styling (same as main trail)
+                verification_ok_indices = set()
+                sections = result["formatted_trail"].split("\n\n")
+                for section in sections:
+                    if section.strip():
+                        lines = section.strip().split("\n")
+                        header_name = lines[0].upper()
+                        badge = panel.badge_map.get(header_name, "❓ " + lines[0].upper())
+                        header_tag = panel.header_tag_map.get(header_name, "header")
+                        panel.trail_text.insert(tk.END, f"{badge}\n", header_tag)
+                        content_lines = lines[1:]
+                        
+                        # Handle verification status lines
+                        if header_name == "VERIFICATION":
+                            for i, line in enumerate(content_lines):
+                                match = re.match(r"^\s*-?\s*\*?\s*Status\s*:\s*(.+)$", line, re.IGNORECASE)
+                                if match:
+                                    status = match.group(1).strip()
+                                    icon = "[OK]" if status.lower() == "passed" else "[XX]"
+                                    content_lines[i] = f" {icon} {status}"
+                                    if status.lower() == "passed":
+                                        verification_ok_indices.add(i)
+                        
+                        for idx, line in enumerate(content_lines):
+                            line_to_insert = line
+                            if idx < len(content_lines) - 1:
+                                line_to_insert += "\n"
+                            else:
+                                line_to_insert += "\n\n"
+                            panel.trail_text.insert(tk.END, line_to_insert, ("section", "section_card"))
+                            
+                            # Apply green bold tag to [OK] status lines
+                            if header_name == "VERIFICATION" and idx in verification_ok_indices:
+                                ok_match = re.search(r'\[OK\].*', line)
+                                if ok_match:
+                                    found = panel.trail_text.search(ok_match.group(), tk.END + "-1 lines", backwards=True, exact=False)
+                                    if found:
+                                        end_pos = f"{found}+{len(ok_match.group())} chars"
+                                        panel.trail_text.tag_add("status_ok", found, end_pos)
+                            
+                            # Bold labels (text ending with colon) but skip sub-items
+                            stripped = line.lstrip()
+                            if ':' in stripped and not stripped[0] in '-ab(' and '[OK]' not in line:
+                                label_match = re.match(r'^(\s*)(.+?:)', line)
+                                if label_match:
+                                    label_text = label_match.group(2)
+                                    found = panel.trail_text.search(label_text, tk.END + "-1 lines", backwards=True, exact=False)
+                                    if found:
+                                        end_pos = f"{found}+{len(label_text)} chars"
+                                        panel.trail_text.tag_add("quote", found, end_pos)
+                
                 panel.trail_text.config(state="disabled")
             else:
                 messagebox.showerror("ERROR", result["error_message"], parent=panel)
@@ -455,7 +664,7 @@ class SymbolicMathApp(tk.Widget):
             messagebox.showerror("ERROR", f"Processing failed: {str(e)}", parent=panel)
         finally:
             # Reset status
-            panel.status_label.config(text="⏳ IDLE", fg="#000000")
+            panel.status_label.config(text="✔ IDLE", fg="#0f5f0f")
             panel.progress_bar.stop()
 
     # ---- dedicated panel methods ---------------------------------------------
@@ -464,6 +673,10 @@ class SymbolicMathApp(tk.Widget):
         panel.expr_entry.delete(0, tk.END)
         panel.final_label.config(text="[Awaiting Input]")
         panel.trail_text.config(state="normal")
+        panel.trail_text.delete("1.0", tk.END)
+        panel.trail_text.config(state="disabled")
+        panel.status_label.config(text="● IDLE", fg="#4b4b4b")
+        panel.progress_bar.stop()
         panel.trail_text.delete("1.0", tk.END)
         panel.trail_text.config(state="disabled")
 
@@ -499,7 +712,7 @@ class SymbolicMathApp(tk.Widget):
             return
 
         self.is_processing = True
-        self.status_label.config(text="⏳ PROCESSING...", fg="#3b5998")
+        self.status_label.config(text="⏳ PROCESSING...", fg="#0a5fa0")
         self.progress_bar.start(10)
         self.compute_button.config(state="disabled")
 
@@ -530,12 +743,21 @@ class SymbolicMathApp(tk.Widget):
             self.final_answer_label.config(text=final_text)
 
             badge_map = {
-                "GIVEN": "🟢 GIVEN",
-                "METHOD": "🟡 METHOD",
-                "STEPS": "🔵 STEPS",
-                "FINAL ANSWER": "✅ FINAL ANSWER",
-                "VERIFICATION": "✅ VERIFICATION",
-                "SUMMARY": "✳️ SUMMARY"
+                "GIVEN": "◉ GIVEN",
+                "METHOD": "◐ METHOD",
+                "STEPS": "◈ STEPS",
+                "FINAL ANSWER": "✔ FINAL ANSWER",
+                "VERIFICATION": "[?] VERIFICATION",
+                "SUMMARY": "▥ SUMMARY"
+            }
+
+            header_tag_map = {
+                "GIVEN": "header_given",
+                "METHOD": "header_method",
+                "STEPS": "header_steps",
+                "FINAL ANSWER": "header_final",
+                "VERIFICATION": "header_verify",
+                "SUMMARY": "header_summary"
             }
 
             sections = result["formatted_trail"].split("\n\n")
@@ -544,19 +766,49 @@ class SymbolicMathApp(tk.Widget):
                     lines = section.strip().split("\n")
                     header_name = lines[0].upper()
                     badge = badge_map.get(header_name, "❓ " + lines[0].upper())
-                    header_text = f"{badge}\n"
+                    header_tag = header_tag_map.get(header_name, "header")
+                    self.trail_text.insert(tk.END, f"{badge}\n", header_tag)
                     content_lines = lines[1:]
 
+                    verification_ok_indices = set()
                     if header_name == "VERIFICATION":
                         for i, line in enumerate(content_lines):
-                            if line.startswith("Status:"):
-                                status = line.split(":")[1].strip()
+                            match = re.match(r"^\s*-?\s*\*?\s*Status\s*:\s*(.+)$", line, re.IGNORECASE)
+                            if match:
+                                status = match.group(1).strip()
                                 icon = "[OK]" if status.lower() == "passed" else "[XX]"
                                 content_lines[i] = f" {icon} {status}"
+                                if status.lower() == "passed":
+                                    verification_ok_indices.add(i)
 
-                    content_text = "\n".join(content_lines) + "\n\n"
-                    self.trail_text.insert(tk.END, header_text, "header")
-                    self.trail_text.insert(tk.END, content_text, "section")
+                    for idx, line in enumerate(content_lines):
+                        line_to_insert = line
+                        if idx < len(content_lines) - 1:
+                            line_to_insert += "\n"
+                        else:
+                            line_to_insert += "\n\n"
+
+                        self.trail_text.insert(tk.END, line_to_insert, ("section", "section_card"))
+
+                        # Apply green bold tag to [OK] status lines
+                        if header_name == "VERIFICATION" and idx in verification_ok_indices:
+                            ok_match = re.search(r'\[OK\].*', line)
+                            if ok_match:
+                                found = self.trail_text.search(ok_match.group(), tk.END + "-1 lines", backwards=True, exact=False)
+                                if found:
+                                    end_pos = f"{found}+{len(ok_match.group())} chars"
+                                    self.trail_text.tag_add("status_ok", found, end_pos)
+
+                        # Bold labels (text ending with colon) but skip sub-items
+                        stripped = line.lstrip()
+                        if ':' in stripped and not stripped[0] in '-ab(' and '[OK]' not in line:
+                            label_match = re.match(r'^(\s*)(.+?:)', line)
+                            if label_match:
+                                label_text = label_match.group(2)
+                                found = self.trail_text.search(label_text, tk.END + "-1 lines", backwards=True, exact=False)
+                                if found:
+                                    end_pos = f"{found}+{len(label_text)} chars"
+                                    self.trail_text.tag_add("quote", found, end_pos)
         else:
             self.final_answer_label.config(text="[ERROR] Failed to compute")
             err_msg = result.get("error_message") or "Failed to compute expression. Check syntax."
@@ -573,7 +825,7 @@ class SymbolicMathApp(tk.Widget):
         self.trail_text.config(state="disabled")
 
         self.is_processing = False
-        self.status_label.config(text="✅ Idle", fg="#0f5f0f")
+        self.status_label.config(text="✔ IDLE", fg="#0f5f0f")
         self.progress_bar.stop()
         self.compute_button.config(state="normal")
 
@@ -584,6 +836,8 @@ class SymbolicMathApp(tk.Widget):
         self.trail_text.config(state="normal")
         self.trail_text.delete("1.0", tk.END)
         self.trail_text.config(state="disabled")
+        self.status_label.config(text="● IDLE", fg="#4b4b4b")
+        self.progress_bar.stop()
 
     def copy_trail(self):
         """Copy the simplification trail to clipboard."""
@@ -832,7 +1086,7 @@ class SymbolicMathApp(tk.Widget):
 
         tk.Label(
             frame,
-            text="OPM - SYMBOLIC MATH GENERATOR",
+            text="SYMBOLIC MATH GENERATOR",
             font=("Consolas", 10, "italic"),
             bg="#d1d1d1",
             fg="#444444",

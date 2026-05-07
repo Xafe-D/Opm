@@ -135,12 +135,15 @@ def format_trail(trail: dict) -> str:
         standard_transformations,
         implicit_multiplication_application,
     )
-    
+
+    def quote_top_level_label(line: str) -> str:
+        return line
+
     lines = []
 
     # GIVEN
     lines.append("GIVEN")
-    lines.append(f"Problem: Simplify the symbolic expression")
+    lines.append("Problem: Simplify the symbolic expression")
     lines.append(f"Input Expression: {trail['given']}")
     try:
         expr_str = trail['given'].replace("^", "**")
@@ -154,7 +157,6 @@ def format_trail(trail: dict) -> str:
 
     # METHOD
     lines.append("METHOD")
-    # Show the new detailed method section, which lists applied rules
     method_lines = trail["method"].split("\n")
     for mline in method_lines:
         lines.append(mline)
@@ -163,7 +165,7 @@ def format_trail(trail: dict) -> str:
     # STEPS
     lines.append("STEPS")
     for step in trail["steps"]:
-        lines.append(step)
+        lines.append(quote_top_level_label(step))
     lines.append("")
 
     # FINAL
@@ -173,18 +175,20 @@ def format_trail(trail: dict) -> str:
     lines.append(f"Factored Form: {trail['factored_form']}")
     lines.append(f"Canonical Simplified Form: {trail['canonical_form']}")
     if trail.get("log_note") and trail.get("log_note") not in {trail.get("final_warning"), trail.get("summary_warning")}:
-        lines.append(trail["log_note"])
+        lines.append(quote_top_level_label(trail["log_note"]))
     lines.append("")
 
     # VERIFICATION
     lines.append("VERIFICATION")
-    lines.append(trail["verification"])
+    for line in trail["verification"].split("\n"):
+        lines.append(quote_top_level_label(line))
     lines.append("")
 
     # SUMMARY
     lines.append("SUMMARY")
     if trail.get("summary_warning"):
         lines.append(trail["summary_warning"])
-    lines.append(trail["summary"])
+    for line in trail["summary"].split("\n"):
+        lines.append(quote_top_level_label(line))
 
     return "\n".join(lines)

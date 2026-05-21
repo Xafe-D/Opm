@@ -48,21 +48,29 @@ def _expand_binomial_only(expr):
     return expr
 
 
-def apply_rule(expr):
+def apply_rule(expr, warning_callback=None):
     """Apply binomial expansion rule to the expression.
 
     Expands powers of binomials using binomial theorem, e.g.:
     (x + 1)^2 → x^2 + 2x + 1
     (a + b)^3 → a^3 + 3a^2b + 3ab^2 + b^3
 
+    If the expression is a single term or already in standard polynomial form,
+    the rule does not apply and a warning can be logged.
+
     Args:
         expr: SymPy expression to simplify
+        warning_callback: Optional callable that accepts a warning string
 
     Returns:
         Expression with binomial expansions applied
     """
     try:
         if not _contains_binomial_power(expr):
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ WARNING: No binomial power detected. Use Polynomial Simplification or Combine Like Terms instead."
+                )
             return expr
 
         expanded = _expand_binomial_only(expr)

@@ -66,7 +66,7 @@ def _is_special_product(expr):
     return False
 
 
-def apply_rule(expr):
+def apply_rule(expr, warning_callback=None):
     """Apply special product rules to the expression.
 
     Recognizes and applies special algebraic identities:
@@ -77,16 +77,19 @@ def apply_rule(expr):
 
     Args:
         expr: SymPy expression to simplify
+        warning_callback: Optional callable that accepts a warning string
 
     Returns:
         Expression with special products simplified
     """
     try:
         if not _is_special_product(expr):
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ WARNING: No Special Product pattern detected. If the expression is a fraction, try Rational Simplification."
+                )
             return expr
 
-        # For rational expressions, factor the numerator but do not cancel common factors yet.
-        # This preserves distinct Special Products + Rational rules in the pipeline.
         num, den = expr.as_numer_denom()
         if den != 1 and _is_special_product(num):
             num_factored = sympy.factor(num)
@@ -96,6 +99,10 @@ def apply_rule(expr):
 
         factored = sympy.factor(expr)
         if factored != expr:
+            if isinstance(factored, sympy.Mul):
+                return sympy.Mul(*factored.args, evaluate=False)
+            if isinstance(factored, sympy.Pow):
+                return sympy.Pow(factored.base, factored.exp, evaluate=False)
             return factored
 
         return expr

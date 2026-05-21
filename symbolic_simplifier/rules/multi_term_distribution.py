@@ -11,7 +11,15 @@ Functions:
 import sympy
 
 
-def apply_rule(expr):
+def _contains_binomial_power(expr):
+    from sympy import Pow, Add
+
+    if isinstance(expr, Pow) and isinstance(expr.base, Add) and expr.exp.is_Integer and expr.exp > 1:
+        return True
+    return any(_contains_binomial_power(arg) for arg in getattr(expr, "args", []))
+
+
+def apply_rule(expr, warning_callback=None):
     """Apply multi-term distribution rule to the expression.
 
     Expands complex products, e.g.:
@@ -20,11 +28,18 @@ def apply_rule(expr):
 
     Args:
         expr: SymPy expression to simplify
+        warning_callback: Optional callable that accepts a warning string
 
     Returns:
         Expression with multi-term products fully expanded
     """
     try:
+        if _contains_binomial_power(expr):
+            if warning_callback is not None:
+                warning_callback(
+                    "⚠️ WARNING: Power detected on binomial groups. Apply Binomial Expansion first to unlock groups for Multi-Term Distribution."
+                )
+            return expr
         # We want to expand multi-term products such as (x+1)(x+2) even when they
         # are nested inside larger sums (e.g., 2*(x+1)*(x+2) + (x+1)**2).
         # However, avoid expanding expressions that represent rational forms
@@ -62,8 +77,8 @@ def apply_rule(expr):
                 else:
                     term = sympy.Mul(*factors, evaluate=False)
                 # Keep terms expanded at term-level (x*x -> x**2, x*3 -> 3*x) but
-                # keep the sum as separate additive pieces to preserve learning steps.
-                term = sympy.expand(term)
+                # do not combine separate additive pieces.
+                term = sympy.expand_mul(term)
                 all_terms.append(term)
 
             return sympy.Add(*all_terms, evaluate=False)

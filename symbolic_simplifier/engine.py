@@ -16,7 +16,8 @@ from sympy.parsing.sympy_parser import (
 )
 
 from .parser import validate_expression, parse_expression
-from .utils.expression_formatter import beautify_str, format_trail
+from .utils.expression_formatter import beautify_str, beautify_expr, format_trail
+from .utils.step_logger import StepLogger
 
 # rule modules imported once so detect + apply share identical pipeline order
 from .rules.binomial_expansion import apply_rule as apply_binomial
@@ -95,7 +96,7 @@ def get_rule_pipeline(expr):
 
 
 
-def process(raw_expression: str, max_iterations: int = 20):
+def process(raw_expression: str, max_iterations: int = 20, strict_mode: bool = False):
     start_time = time.time()
     steps = []
     logical_step_counter = 0
@@ -108,6 +109,11 @@ def process(raw_expression: str, max_iterations: int = 20):
             for sub in sublines:
                 steps.append(f"    {sub}")
 
+    def log_warning(message: str):
+        warning_text = f"⚠️ WARNING: {message}"
+        trail.setdefault("warnings", []).append(warning_text)
+        steps.append(warning_text)
+
     trail = {
         "given": raw_expression,
         "method": "",
@@ -117,6 +123,7 @@ def process(raw_expression: str, max_iterations: int = 20):
         "canonical_form": "",
         "log_note": "",
         "verification": "",
+        "warnings": [],
         "summary": ""
     }
 
@@ -261,70 +268,83 @@ def process(raw_expression: str, max_iterations: int = 20):
             sublines.append(f"c) Result: {after}")
         else:
             sublines.append("- No change; already simplified")
+        if rstep.get("next_rule"):
+            sublines.append(f"- {rstep['next_rule']}")
         log_step(rule, sublines)
 
-    # ---------------------------
-    # GENERATE FACTORED REPRESENTATION
-    # ---------------------------
-    factored = factor(expression)
-    raw_fact = str(factored if factored != expression else expression)
-    trail["factored_form"] = beautify_str(raw_fact)
-    sublines = ["- Checked for common factors"]
-    if factored == expression:
-        rational_step_applied = any(rstep.get("rule") == "Rational Expression Simplification" for rstep in trail.get("rule_steps", []))
-        try:
-            original_expr_sym = parse_expression(raw_expression)
-            num, den = original_expr_sym.as_numer_denom()
-            if den != 1 and original_expr_sym != expression:
-                rational_step_applied = True
-        except Exception:
-            pass
-
-        if rational_step_applied:
+    if strict_mode:
+        log_step(
+            "Strict mode enabled",
+            [
+                "- Bypassed sympy.simplify() and global canonical transformations",
+                "- Final result is based only on executed algebraic rules",
+            ],
+        )
+        trail["factored_form"] = beautify_str(str(expression))
+        trail["canonical_form"] = beautify_str(str(expression))
+    else:
+        # ---------------------------
+        # GENERATE FACTORED REPRESENTATION
+        # ---------------------------
+        factored = factor(expression)
+        raw_fact = str(factored if factored != expression else expression)
+        trail["factored_form"] = beautify_str(raw_fact)
+        sublines = ["- Checked for common factors"]
+        if factored == expression:
+            rational_step_applied = any(rstep.get("rule") == "Rational Expression Simplification" for rstep in trail.get("rule_steps", []))
             try:
                 original_expr_sym = parse_expression(raw_expression)
                 num, den = original_expr_sym.as_numer_denom()
-                fact_num = factor(num)
-                fact_den = factor(den)
-                if fact_num != num:
-                    sublines.append(f"- Numerator factored: {beautify_str(str(fact_num))}")
-                if fact_den != den:
-                    sublines.append(f"- Denominator factored: {beautify_str(str(fact_den))}")
-                num_factors = list(fact_num.args) if isinstance(fact_num, sympy.Mul) else [fact_num]
-                den_factors = list(fact_den.args) if isinstance(fact_den, sympy.Mul) else [fact_den]
-                common_factors = [f for f in num_factors if f in den_factors]
-                if common_factors:
-                    common_list = ", ".join(beautify_str(str(f)) for f in common_factors)
-                    sublines.append(f"- Common factor(s) cancelled: {common_list}")
-                else:
-                    sublines.append("- Common factor(s) already cancelled by prior step")
+                if den != 1 and original_expr_sym != expression:
+                    rational_step_applied = True
             except Exception:
+                pass
+
+            if rational_step_applied:
+                try:
+                    original_expr_sym = parse_expression(raw_expression)
+                    num, den = original_expr_sym.as_numer_denom()
+                    fact_num = factor(num)
+                    fact_den = factor(den)
+                    if fact_num != num:
+                        sublines.append(f"- Numerator factored: {beautify_str(str(fact_num))}")
+                    if fact_den != den:
+                        sublines.append(f"- Denominator factored: {beautify_str(str(fact_den))}")
+                    num_factors = list(fact_num.args) if isinstance(fact_num, sympy.Mul) else [fact_num]
+                    den_factors = list(fact_den.args) if isinstance(fact_den, sympy.Mul) else [fact_den]
+                    common_factors = [f for f in num_factors if f in den_factors]
+                    if common_factors:
+                        common_list = ", ".join(beautify_str(str(f)) for f in common_factors)
+                        sublines.append(f"- Common factor(s) cancelled: {common_list}")
+                    else:
+                        sublines.append("- Common factor(s) already cancelled by prior step")
+                except Exception:
+                    sublines.append(f"- No factors to extract; result unchanged: {trail['factored_form']}")
+            else:
                 sublines.append(f"- No factors to extract; result unchanged: {trail['factored_form']}")
         else:
-            sublines.append(f"- No factors to extract; result unchanged: {trail['factored_form']}")
-    else:
-        sublines.append(f"- Factored form: {trail['factored_form']}")
-    log_step("Generate Factored Representation", sublines)
-    # ---------------------------
-    # CANONICAL SIMPLIFICATION
-    # ---------------------------
-    # For polynomials, canonical representation should be expanded.
-    if expression.is_polynomial():
-        simplified = sympy.expand(expression)
-        canon_note = "- Expanded polynomial to canonical form"
-    else:
-        simplified = simplify(expression)
-        canon_note = "- Ensured standard form (sorted terms, minimal coefficients)"
+            sublines.append(f"- Factored form: {trail['factored_form']}")
+        log_step("Generate Factored Representation", sublines)
+        # ---------------------------
+        # CANONICAL SIMPLIFICATION
+        # ---------------------------
+        # For polynomials, canonical representation should be expanded.
+        if expression.is_polynomial():
+            simplified = sympy.expand(expression)
+            canon_note = "- Expanded polynomial to canonical form"
+        else:
+            simplified = simplify(expression)
+            canon_note = "- Ensured standard form (sorted terms, minimal coefficients)"
 
-    raw_canon = str(simplified)
-    trail["canonical_form"] = beautify_str(raw_canon)
-    log_step(
-        "Canonical simplification",
-        [
-            canon_note,
-            f"- Result: {trail['canonical_form']}",
-        ],
-    )
+        raw_canon = str(simplified)
+        trail["canonical_form"] = beautify_str(raw_canon)
+        log_step(
+            "Canonical simplification",
+            [
+                canon_note,
+                f"- Result: {trail['canonical_form']}",
+            ],
+        )
 
     # ---------------------------
     # VERIFICATION
@@ -394,7 +414,7 @@ def process(raw_expression: str, max_iterations: int = 20):
 
     return {
         "status": "success",
-        "final_answer": beautify_str(raw_canon),
+        "final_answer": beautify_str(trail["canonical_form"]),
         "final_answers": {
             "factored_form": trail["factored_form"],
             "canonical_form": trail["canonical_form"],
@@ -545,6 +565,31 @@ def detect_method(expr):
     return method_lines
 
 
+def detect_applicable_rules(expr):
+    """Return a list of rules that are applicable to the current expression."""
+    def _rule_changes_expr(rule_name, target_expr):
+        func = RULE_MAP.get(rule_name)
+        if func is None:
+            return False
+        try:
+            result = func(target_expr)
+        except TypeError:
+            result = func(target_expr)
+        except Exception:
+            return False
+        return beautify_str(str(result)) != beautify_str(str(target_expr))
+
+    applicable = []
+    for name, _, _ in get_rule_pipeline(expr):
+        if _rule_changes_expr(name, expr):
+            applicable.append(name)
+
+    if "Factorization" not in applicable and _rule_changes_expr("Factorization", expr):
+        applicable.append("Factorization")
+
+    return applicable
+
+
 
 def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
     steps = []
@@ -553,6 +598,19 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
 
     if max_iterations <= 0:
         return expr, steps, f"Stopped before simplification: max_iterations set to {max_iterations}."
+
+    def _next_rule_after(name):
+        pipeline = get_rule_pipeline(expr)
+        applicable = detect_applicable_rules(expr)
+        found = False
+        for rule_name, _, _ in pipeline:
+            if not found:
+                if rule_name == name:
+                    found = True
+                continue
+            if rule_name in applicable:
+                return rule_name
+        return None
 
     def try_rule(name, func, description, category, *args, force_log=False):
         nonlocal expr
@@ -576,6 +634,12 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
             expr = new
             visited.add(new_key)
 
+        next_rule = _next_rule_after(name)
+        if next_rule is None:
+            next_rule_text = "No further algebraic rule pending"
+        else:
+            next_rule_text = f"Next rule: {next_rule}"
+
         # Add step log when forced or when meaningful change occurred
         if force_log or beautify_str(str(prev)) != beautify_str(str(new)):
             steps.append({
@@ -584,6 +648,7 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
                 "category": category,
                 "before": beautify_str(str(prev)),
                 "result": beautify_str(str(new)),
+                "next_rule": next_rule_text,
             })
             return new != prev
 
@@ -672,33 +737,57 @@ def apply_algebra_rules(expr, raw_input=None, max_iterations=20):
     return expr, steps, f"Stopped after reaching max iterations ({max_iterations})."
 
 
-def process_by_rule(raw_expression: str, rule_name: str):
+def process_by_rule(raw_expression: str, rule_name: str, strict_mode: bool = False):
     """
     Process an expression using only a specific rule.
     Returns the result with a trail indicating if the rule was applied.
     """
     start_time = time.time()
-    steps = []
+    logger = StepLogger()
+    steps = logger.steps
     logical_step_counter = 0
+    recommendation_text = None
+    robustness_warning = None
 
     def log_step(description, sublines=None):
         nonlocal logical_step_counter
         logical_step_counter += 1
-        steps.append(f"Step {logical_step_counter}: {description}")
+        logger.log(description)
         if sublines:
             for sub in sublines:
-                steps.append(f"    {sub}")
+                logger.steps.append(f"    {sub}")
+
+    def log_warning(message: str):
+        warning_text = f"⚠️ WARNING: {message}"
+        trail.setdefault("warnings", []).append(warning_text)
+        logger.steps.append(warning_text)
+
+    def warning_callback(message: str):
+        nonlocal recommendation_text, robustness_warning
+        if message.startswith("⚠️ WARNING:"):
+            robustness_warning = message
+            trail.setdefault("warnings", []).append(message)
+            logger.log_robustness_warning(message)
+            return
+        if recommendation_text is None:
+            recommendation_text = message
+            trail["final_warning"] = message
+            trail["summary_warning"] = message
+            logger.log_recommended_warning(message)
 
     trail = {
         "given": raw_expression,
         "method": f"METHOD: {rule_name} only",
-        "steps": steps,
+        "steps": logger.steps,
         "rule_steps": [],
         "factored_form": "",
         "canonical_form": "",
         "log_note": "",
         "verification": "",
-        "summary": ""
+        "warnings": [],
+        "summary": "",
+        "final_warning": "",
+        "summary_warning": "",
     }
 
     # GIVEN
@@ -773,6 +862,19 @@ def process_by_rule(raw_expression: str, rule_name: str):
             "formatted_trail": format_trail(trail),
         }
 
+    def _next_rule_after(current_rule_name, target_expr):
+        pipeline = get_rule_pipeline(original_expr)
+        applicable = detect_applicable_rules(target_expr)
+        found = False
+        for rule_name, _, _ in pipeline:
+            if not found:
+                if rule_name == current_rule_name:
+                    found = True
+                continue
+            if rule_name in applicable:
+                return rule_name
+        return None
+
     # Apply the specific rule
     rule_func = RULE_MAP[rule_name]
     
@@ -788,50 +890,125 @@ def process_by_rule(raw_expression: str, rule_name: str):
         rule_desc = f"Apply {rule_name.lower()}"
 
     original_expr = expression
+    applicable_rules = detect_applicable_rules(original_expr)
+    recommended_rules = [r for r in applicable_rules if r != rule_name]
+    recommended_text = None
+    if recommended_rules:
+        recommended_text = f"Recommended next rule: {recommended_rules[0]}"
+
     try:
+        new_expr = rule_func(expression, warning_callback=warning_callback)
+    except TypeError:
         new_expr = rule_func(expression)
     except Exception as e:
         new_expr = expression
         log_step(f"Rule application failed: {str(e)}")
 
+    next_pipeline_rule = _next_rule_after(rule_name, new_expr)
+    if next_pipeline_rule is None:
+        next_rule_text = None
+    else:
+        next_rule_text = f"Next rule: {next_pipeline_rule}"
+
+    trail["factored_form"] = beautify_expr(new_expr)
+    trail["canonical_form"] = beautify_expr(new_expr)
+
     if beautify_str(str(original_expr)) == beautify_str(str(new_expr)):
         # No change
-        log_step(
-            f"Applied {rule_name}",
-            [
-                f"- Attempted to apply: {rule_desc}",
-                "- No applicable pattern detected",
-                f"- Result: {beautify_str(str(new_expr))} (No changes made)"
-            ]
-        )
-        trail["log_note"] = f"No {rule_name.lower()} pattern detected."
-        trail["summary"] = f"FINAL ANSWER: {beautify_str(str(new_expr))}"
+        if strict_mode:
+            log_warning(
+                f"Strict mode prevented applying {rule_name}; expression is not in a ready state for this rule."
+            )
+            trail["log_note"] = f"Strict mode active: no {rule_name.lower()} transformation applied."
+            trail["summary"] = f"STRICT MODE: {beautify_expr(new_expr)}"
+            return {
+                "status": "success",
+                "final_answer": beautify_expr(new_expr),
+                "final_answers": [beautify_expr(new_expr)],
+                "processing_time": time.time() - start_time,
+                "formatted_trail": format_trail(trail),
+            }
+
+        sublines = [
+            f"- Attempted to apply: {rule_desc}",
+            "- No applicable pattern detected",
+            f"- Result: {beautify_expr(new_expr)} (No changes made)",
+        ]
+
+        if recommendation_text is None:
+            if recommended_text is not None:
+                sublines.append(f"- {recommended_text}")
+            elif next_pipeline_rule is not None:
+                sublines.append(f"- {next_rule_text}")
+
+        log_step(f"Applied {rule_name}", sublines)
+
+        if robustness_warning:
+            trail["log_note"] = robustness_warning
+            trail["summary"] = beautify_expr(new_expr)
+        elif recommendation_text:
+            trail["log_note"] = recommendation_text
+            trail["summary"] = beautify_expr(new_expr)
+        else:
+            if recommended_text is not None:
+                trail["log_note"] = recommended_text
+            else:
+                trail["log_note"] = f"No {rule_name.lower()} pattern detected."
+            trail["summary"] = f"FINAL ANSWER: {beautify_expr(new_expr)}"
     else:
         # Changed
+        sublines = [
+            f"- Applied: {rule_desc}",
+            f"- Before: {beautify_str(str(original_expr))}",
+            f"- After: {beautify_expr(new_expr)}",
+        ]
+        if next_pipeline_rule is not None:
+            sublines.append(f"- {next_rule_text}")
         log_step(
             f"Applied {rule_name}",
-            [
-                f"- Applied: {rule_desc}",
-                f"- Before: {beautify_str(str(original_expr))}",
-                f"- After: {beautify_str(str(new_expr))}"
-            ]
+            sublines
         )
         trail["rule_steps"] = [{
             "rule": rule_name,
             "description": rule_desc,
             "before": beautify_str(str(original_expr)),
-            "result": beautify_str(str(new_expr)),
+            "result": beautify_expr(new_expr),
+            "next_rule": next_rule_text,
         }]
         trail["log_note"] = f"Successfully applied {rule_name.lower()}."
-        trail["summary"] = f"FINAL ANSWER: {beautify_str(str(new_expr))}"
+        trail["summary"] = f"FINAL ANSWER: {beautify_expr(new_expr)}"
 
     end_time = time.time()
     processing_time = end_time - start_time
 
+    try:
+        residual = sympy.simplify(original_expr - new_expr)
+        status = "Passed" if residual == 0 else "Failed"
+        trail["verification"] = (
+            f"Residual: {beautify_str(str(residual))}\n"
+            f"Status: {status}"
+        )
+    except Exception as e:
+        trail["verification"] = f"Verification Error: {str(e)}"
+
+    if not trail["summary"]:
+        trail["summary"] = f"FINAL ANSWER: {beautify_expr(new_expr)}"
+
+    trail["summary"] = (
+        f"Rule: {rule_name}\n"
+        f"Final Answer: {beautify_expr(new_expr)}\n"
+        f"Steps performed: {logical_step_counter}\n"
+        f"Execution time: {processing_time:.4f} sec\n"
+        f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"SymPy version: {sympy.__version__}"
+    )
+
     return {
         "status": "success",
-        "final_answer": beautify_str(str(new_expr)),
-        "final_answers": [beautify_str(str(new_expr))],
+        "final_answer": beautify_expr(new_expr),
+        "final_answers": [beautify_expr(new_expr)],
+        "final_warning": trail.get("final_warning", ""),
+        "summary_warning": trail.get("summary_warning", ""),
         "processing_time": processing_time,
         "formatted_trail": format_trail(trail),
     }

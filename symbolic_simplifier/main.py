@@ -23,11 +23,94 @@ from .ui.interface import RetroButton, format_recommended_warning
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     _HAS_REPORTLAB = True
 except ImportError:
     letter = None
     canvas = None
+    pdfmetrics = None
+    TTFont = None
     _HAS_REPORTLAB = False
+
+_PDF_UNICODE_FONT_NAME = "OPMUnicode"
+_PDF_FONT_CANDIDATES = [
+    "DejaVuSans.ttf",
+    "Arial Unicode MS.ttf",
+    "arialuni.ttf",
+    "Segoe UI Symbol.ttf",
+    "seguisym.ttf",
+    "Segoe UI Emoji.ttf",
+    "seguiemj.ttf",
+    "FreeSerif.ttf",
+    "LiberationSans-Regular.ttf",
+]
+
+
+def _find_system_font(filename: str):
+    """Search common system font paths for a TrueType font file."""
+    if not filename:
+        return None
+    paths = []
+    if os.name == "nt":
+        windir = os.environ.get("WINDIR", r"C:\Windows")
+        paths.extend([
+            os.path.join(windir, "Fonts", filename),
+            os.path.join(windir, "Fonts", filename.replace(" ", "")),
+        ])
+    else:
+        paths.extend([
+            f"/usr/share/fonts/truetype/{filename}",
+            f"/usr/share/fonts/truetype/dejavu/{filename}",
+            f"/usr/share/fonts/{filename}",
+            f"/usr/local/share/fonts/{filename}",
+            os.path.expanduser(f"~/Library/Fonts/{filename}"),
+            os.path.expanduser(f"~/.local/share/fonts/{filename}"),
+        ])
+
+    for path in paths:
+        if path and os.path.isfile(path):
+            return path
+    return None
+
+
+def _register_pdf_unicode_font() -> bool:
+    """Register a Unicode-capable TTF font for PDF export."""
+    if not _HAS_REPORTLAB or pdfmetrics is None or TTFont is None:
+        return False
+
+    try:
+        pdfmetrics.getFont(_PDF_UNICODE_FONT_NAME)
+        return True
+    except Exception:
+        pass
+
+    for candidate in _PDF_FONT_CANDIDATES:
+        font_path = _find_system_font(candidate)
+        if font_path:
+            try:
+                pdfmetrics.registerFont(TTFont(_PDF_UNICODE_FONT_NAME, font_path))
+                return True
+            except Exception:
+                continue
+
+    return False
+
+
+def _normalize_pdf_text(line: str) -> str:
+    """Replace unsupported symbols with ASCII-safe alternatives when no Unicode font is available."""
+    replacements = {
+        "•": "-",
+        "■": "-",
+        "→": "->",
+        "✓": "[OK]",
+        "⚠️": "WARNING:",
+        "—": "--",
+        "…": "...",
+    }
+    for src, dst in replacements.items():
+        line = line.replace(src, dst)
+    return line
 
 
 class SymbolicMathApp(tk.Widget):
@@ -974,19 +1057,25 @@ class SymbolicMathApp(tk.Widget):
 
         if file_path:
             try:
-                c = canvas.Canvas(file_path, pagesize=letter)
+                font_registered = _register_pdf_unicode_font()
+                default_font = _PDF_UNICODE_FONT_NAME if font_registered else "Courier"
 
+                c = canvas.Canvas(file_path, pagesize=letter)
                 width, height = letter
                 y = height - 40
 
                 for line in content.split("\n"):
+                    if not font_registered:
+                        line = _normalize_pdf_text(line)
 
-                    if any(line.startswith(badge) for badge in ["[IN]", "[*]", "[→]", "[!]", "[✓]", "[#]"]):
-                        c.setFont("Courier-Bold", 12)
+                    if line.startswith("GIVEN") or line.startswith("METHOD") or line.startswith("STEPS"):
+                        c.setFont(default_font, 12)
                         c.setFillColorRGB(0, 0.5, 0)
-
+                    elif line.startswith("FINAL ANSWER") or line.startswith("VERIFICATION") or line.startswith("SUMMARY"):
+                        c.setFont(default_font, 12)
+                        c.setFillColorRGB(0, 0, 0.5)
                     else:
-                        c.setFont("Courier", 10)
+                        c.setFont(default_font, 10)
                         c.setFillColorRGB(0, 0, 0)
 
                     c.drawString(40, y, line)
